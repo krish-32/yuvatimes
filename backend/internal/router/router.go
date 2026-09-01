@@ -29,6 +29,11 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Post("/items", h.StageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
 		})
+
+		r.Route("/v1/barcodes", func(r chi.Router) {
+			r.Post("/generate-zpl", h.GenerateZPL)
+			r.Post("/print-zpl", h.PrintZPL)
+		})
 	})
 
 	return r

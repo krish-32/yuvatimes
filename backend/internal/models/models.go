@@ -128,3 +128,23 @@ type APIResponse struct {
 	Message string      `json:"message,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
 }
+
+type GenerateZPLRequest struct {
+	Brand  string `json:"brand"`
+	Model  string `json:"model"`
+	Price  string `json:"price"`
+	Serial string `json:"serial"`
+}
+
+type PrintZPLRequest struct {
+	PrinterIP string `json:"printerIp"`
+	Brand     string `json:"brand"`
+	Model     string `json:"model"`
+	Price     string `json:"price"`
+	Serial    string `json:"serial"`
+}
+
+type GenerateZPLResponse struct {
+	Serial string `json:"serial"`
+	ZPL    string `json:"zpl"`
+}
