@@ -9,7 +9,12 @@ import (
 )
 
 func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
-	var req models.GenerateZPLRequest
+	var req struct {
+		Brand  string `json:"brand"`
+		Model  string `json:"model"`
+		Price  string `json:"price"`
+		Serial string `json:"serial"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return
@@ -22,16 +27,22 @@ func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
 
 	zpl := printer.GenerateWatchTagZPL(req.Brand, req.Model, req.Price, req.Serial)
 
-	res := models.GenerateZPLResponse{
-		Serial: req.Serial,
-		ZPL:    zpl,
+	res := map[string]interface{}{
+		"serial": req.Serial,
+		"zpl":    zpl,
 	}
 	
 	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
 }
 
 func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
-	var req models.PrintZPLRequest
+	var req struct {
+		PrinterIP string `json:"printerIp"`
+		Brand     string `json:"brand"`
+		Model     string `json:"model"`
+		Price     string `json:"price"`
+		Serial    string `json:"serial"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return

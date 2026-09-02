@@ -33,7 +33,12 @@ func respondError(w http.ResponseWriter, status int, message string) {
 }
 
 func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
-	var req models.GenerateBarcodesRequest
+	var req struct {
+		ProductType string `json:"productType"`
+		Brand       string `json:"brand"`
+		Model       string `json:"model"`
+		Quantity    int    `json:"quantity"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return
@@ -45,31 +50,32 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 
 	batchID := uuid.New().String()
 	var barcodes []string
-	var resBarcodes []models.BarcodeResponse
+	var resBarcodes []map[string]interface{}
 
 	for i := 0; i < req.Quantity; i++ {
 		uid := strings.Split(uuid.New().String(), "-")[0]
-		serial := fmt.Sprintf("%s-%s-%s", req.ProductType[:3], time.Now().Format("20060102"), strings.ToUpper(uid))
+		prefix := req.ProductType
+		if len(prefix) > 3 {
+			prefix = prefix[:3]
+		}
+		serial := fmt.Sprintf("%s-%s-%s", strings.ToUpper(prefix), time.Now().Format("20060102"), strings.ToUpper(uid))
 		barcodes = append(barcodes, serial)
-		resBarcodes = append(resBarcodes, models.BarcodeResponse{
-			Serial: serial, BarcodeFormat: "CODE128", BarcodeValue: serial,
+		resBarcodes = append(resBarcodes, map[string]interface{}{
+			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,
 		})
 	}
 
-	batch := &models.BarcodeGenerationBatch{
-		ID: batchID, RequestedQuantity: req.Quantity, Status: "DRAFT",
-		ExpiresAt: time.Now().Add(30 * time.Minute), CreatedBy: "ADMIN", IdempotencyKey: uuid.New().String(),
-	}
-
-	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batch, models.ProductDraft{ProductType: req.ProductType, Brand: req.Brand, Model: req.Model}, barcodes)
+	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batchID, req.ProductType, req.Brand, req.Model, barcodes)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	res := models.GenerateBarcodesResponse{
-		BatchID: batchID, ProductDraft: models.ProductDraft{ProductType: prod.ProductType, Brand: prod.Brand, Model: prod.Model},
-		Barcodes: resBarcodes, ExpiresAt: batch.ExpiresAt,
+	res := map[string]interface{}{
+		"batchId": batchID, 
+		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model},
+		"barcodes": resBarcodes, 
+		"expiresAt": time.Now().Add(30 * time.Minute),
 	}
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
@@ -79,13 +85,6 @@ func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
 	idemKey := r.Header.Get("Idempotency-Key")
 	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
 
-	var req models.CommitBatchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid payload")
-		return
-	}
-
-	// Call CommitBatch with new signature (product is already known)
 	res, err := h.Repo.CommitBatch(r.Context(), batchID)
 	if err != nil {
 		if strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "not found") {
@@ -135,7 +134,9 @@ func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
 	idemKey := r.Header.Get("Idempotency-Key")
 	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
 
-	var req models.StageItemRequest
+	var req struct {
+		Barcode string `json:"barcode"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Barcode == "" {
 		respondError(w, http.StatusUnprocessableEntity, "invalid scan payload")
 		return
@@ -158,17 +159,7 @@ func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	idemKey := r.Header.Get("Idempotency-Key")
 	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
 
-	var req models.CompleteCheckoutRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid checkout payload")
-		return
-	}
-	if req.Payment.Amount <= 0 {
-		respondError(w, http.StatusPaymentRequired, "payment required")
-		return
-	}
-
-	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID, req)
+	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "empty") || strings.Contains(err.Error(), "no longer STAGED") {
 			respondError(w, http.StatusConflict, err.Error())
