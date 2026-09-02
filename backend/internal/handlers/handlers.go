@@ -61,13 +61,14 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: time.Now().Add(30 * time.Minute), CreatedBy: "ADMIN", IdempotencyKey: uuid.New().String(),
 	}
 
-	if err := h.Repo.CreateBarcodeBatch(r.Context(), batch, barcodes); err != nil {
-		respondError(w, http.StatusConflict, err.Error())
+	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batch, models.ProductDraft{ProductType: req.ProductType, Brand: req.Brand, Model: req.Model}, barcodes)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	res := models.GenerateBarcodesResponse{
-		BatchID: batchID, ProductDraft: models.ProductDraft{ProductType: req.ProductType, Brand: req.Brand, Model: req.Model},
+		BatchID: batchID, ProductDraft: models.ProductDraft{ProductType: prod.ProductType, Brand: prod.Brand, Model: prod.Model},
 		Barcodes: resBarcodes, ExpiresAt: batch.ExpiresAt,
 	}
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
@@ -84,11 +85,8 @@ func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fake product data for demo - usually we'd pass this in request or retrieve from batch draft
-	normKey := fmt.Sprintf("%s-%s", "BRAND", "MODEL")
-	p := models.Product{ID: uuid.New().String(), ProductType: "WATCH", Brand: "BRAND", Model: "MODEL", NormalizedLookupKey: normKey}
-
-	res, err := h.Repo.CommitBatch(r.Context(), batchID, p)
+	// Call CommitBatch with new signature (product is already known)
+	res, err := h.Repo.CommitBatch(r.Context(), batchID)
 	if err != nil {
 		if strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "not found") {
 			respondError(w, http.StatusUnprocessableEntity, err.Error())

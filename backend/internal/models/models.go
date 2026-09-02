@@ -7,23 +7,9 @@ type Product struct {
 	ProductType         string `json:"productType"`
 	Brand               string `json:"brand"`
 	Model               string `json:"model"`
-	NormalizedLookupKey string `json:"-"`
 }
 
-type InventoryItem struct {
-	ID         string    `json:"id"`
-	ProductID  string    `json:"productId"`
-	BarcodeID  string    `json:"barcodeId"`
-	Status     string    `json:"status"` // AVAILABLE, STAGED, SOLD
-	Cost       float64   `json:"cost"`
-	ReceivedAt time.Time `json:"receivedAt"`
-}
 
-type SerialBarcode struct {
-	ID              string `json:"id"`
-	InventoryItemID string `json:"inventoryItemId"`
-	BarcodeValue    string `json:"barcodeValue"`
-}
 
 type BarcodeGenerationBatch struct {
 	ID                string    `json:"batchId"`
