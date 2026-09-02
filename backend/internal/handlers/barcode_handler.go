@@ -19,7 +19,7 @@ func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	
+
 	if req.Brand == "" || req.Model == "" || req.Serial == "" {
 		respondError(w, http.StatusBadRequest, "missing required fields (brand, model, serial)")
 		return
@@ -31,7 +31,7 @@ func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
 		"serial": req.Serial,
 		"zpl":    zpl,
 	}
-	
+
 	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
 }
 

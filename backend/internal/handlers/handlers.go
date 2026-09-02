@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"backend/internal/models"
 	"backend/internal/repository"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -72,10 +72,10 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res := map[string]interface{}{
-		"batchId": batchID, 
+		"batchId":      batchID,
 		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model},
-		"barcodes": resBarcodes, 
-		"expiresAt": time.Now().Add(30 * time.Minute),
+		"barcodes":     resBarcodes,
+		"expiresAt":    time.Now().Add(30 * time.Minute),
 	}
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
@@ -83,7 +83,10 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
 	batchID := chi.URLParam(r, "batchId")
 	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
+	if idemKey == "" {
+		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
+		return
+	}
 
 	res, err := h.Repo.CommitBatch(r.Context(), batchID)
 	if err != nil {
@@ -99,9 +102,13 @@ func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 { page = 1 }
+	if page < 1 {
+		page = 1
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit < 1 || limit > 100 { limit = 50 }
+	if limit < 1 || limit > 100 {
+		limit = 50
+	}
 
 	res, err := h.Repo.GetProductsSummary(r.Context(), page, limit)
 	if err != nil {
@@ -132,7 +139,10 @@ func (h *Handler) SearchBarcode(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
+	if idemKey == "" {
+		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
+		return
+	}
 
 	var req struct {
 		Barcode string `json:"barcode"`
@@ -157,7 +167,10 @@ func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" { respondError(w, http.StatusBadRequest, "Idempotency-Key required"); return }
+	if idemKey == "" {
+		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
+		return
+	}
 
 	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID)
 	if err != nil {

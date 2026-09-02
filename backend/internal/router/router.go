@@ -3,9 +3,9 @@ package router
 import (
 	"time"
 
+	"backend/internal/handlers"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"backend/internal/handlers"
 )
 
 func New(h *handlers.Handler) *chi.Mux {
