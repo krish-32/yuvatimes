@@ -81,6 +81,10 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 		} else {
 			return nil, err
 		}
+	} else {
+		// Product exists, update prices to the latest provided values
+		_, err = tx.ExecContext(ctx, "UPDATE products SET purchase_price = ?, selling_price = ? WHERE id = ?", pPrice, sPrice, productID)
+		if err != nil { return nil, err }
 	}
 
 	prod := &models.Product{ID: productID, ProductType: pType, Brand: brand, Model: model, PurchasePrice: pPrice, SellingPrice: sPrice}
