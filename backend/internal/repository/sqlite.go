@@ -65,11 +65,9 @@ func (r *Repository) initSchema() error {
 	return nil
 }
 
-func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pType, brand, model string, barcodes []string) (*models.Product, error) {
+func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pType, brand, model string, pPrice, sPrice float64, barcodes []string) (*models.Product, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer tx.Rollback()
 
 	var productID string
@@ -77,17 +75,15 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 	if err != nil {
 		if err == sql.ErrNoRows {
 			productID = uuid.New().String()
-			_, err = tx.ExecContext(ctx, "INSERT INTO products (id, product_type, brand, model) VALUES (?, ?, ?, ?)",
-				productID, pType, brand, model)
-			if err != nil {
-				return nil, err
-			}
+			_, err = tx.ExecContext(ctx, "INSERT INTO products (id, product_type, brand, model, purchase_price, selling_price) VALUES (?, ?, ?, ?, ?, ?)",
+				productID, pType, brand, model, pPrice, sPrice)
+			if err != nil { return nil, err }
 		} else {
 			return nil, err
 		}
 	}
 
-	prod := &models.Product{ID: productID, ProductType: pType, Brand: brand, Model: model}
+	prod := &models.Product{ID: productID, ProductType: pType, Brand: brand, Model: model, PurchasePrice: pPrice, SellingPrice: sPrice}
 
 	for _, b := range barcodes {
 		_, err = tx.ExecContext(ctx, "INSERT INTO barcodes (serial, batch_id, product_id, status) VALUES (?, ?, ?, 'DRAFT')",
@@ -148,7 +144,7 @@ func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[strin
 
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {
 	query := `
-		SELECT p.product_type, p.brand, p.model,
+		SELECT p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
 			COUNT(b.serial) as total_units,
 			SUM(CASE WHEN b.status = 'IN_STOCK' THEN 1 ELSE 0 END) as available_units
 		FROM products p
@@ -156,20 +152,18 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([
 		GROUP BY p.id LIMIT ? OFFSET ?
 	`
 	rows, err := r.DB.QueryContext(ctx, query, limit, (page-1)*limit)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer rows.Close()
 
 	var results []map[string]interface{}
 	for rows.Next() {
 		var pType, brand, model string
+		var pPrice, sPrice float64
 		var total, avail sql.NullInt64
-		if err := rows.Scan(&pType, &brand, &model, &total, &avail); err != nil {
-			return nil, err
-		}
+		if err := rows.Scan(&pType, &brand, &model, &pPrice, &sPrice, &total, &avail); err != nil { return nil, err }
 		results = append(results, map[string]interface{}{
 			"productType": pType, "brand": brand, "model": model,
+			"purchasePrice": pPrice, "sellingPrice": sPrice,
 			"totalUnits": int(total.Int64), "availableUnits": int(avail.Int64),
 		})
 	}
@@ -178,70 +172,59 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([
 
 func (r *Repository) SearchBarcode(ctx context.Context, barcode string) (map[string]interface{}, error) {
 	query := `
-		SELECT p.product_type, p.brand, p.model, b.serial, b.status
+		SELECT p.product_type, p.brand, p.model, p.purchase_price, p.selling_price, b.serial, b.status
 		FROM barcodes b
 		JOIN products p ON b.product_id = p.id
 		WHERE b.serial = ?
 	`
 	var pType, brand, model, serial, status string
-	err := r.DB.QueryRowContext(ctx, query, barcode).Scan(&pType, &brand, &model, &serial, &status)
+	var pPrice, sPrice float64
+	err := r.DB.QueryRowContext(ctx, query, barcode).Scan(&pType, &brand, &model, &pPrice, &sPrice, &serial, &status)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("not found")
-		}
+		if err == sql.ErrNoRows { return nil, fmt.Errorf("not found") }
 		return nil, err
 	}
 	return map[string]interface{}{
 		"inventoryItemId": serial, "productType": pType, "brand": brand,
-		"model": model, "barcodeValue": serial, "status": status,
+		"model": model, "purchasePrice": pPrice, "sellingPrice": sPrice,
+		"barcodeValue": serial, "status": status,
 	}, nil
 }
 
 func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer tx.Rollback()
 
 	var pType, pBrand, pModel, status, existingSession sql.NullString
+	var pPrice, sPrice sql.NullFloat64
 	query := `
-		SELECT b.status, b.checkout_session_id, p.product_type, p.brand, p.model
+		SELECT b.status, b.checkout_session_id, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
 		FROM barcodes b
 		JOIN products p ON b.product_id = p.id
 		WHERE b.serial = ?
 	`
-	err = tx.QueryRowContext(ctx, query, barcode).Scan(&status, &existingSession, &pType, &pBrand, &pModel)
+	err = tx.QueryRowContext(ctx, query, barcode).Scan(&status, &existingSession, &pType, &pBrand, &pModel, &pPrice, &sPrice)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("barcode not found")
-		}
+		if err == sql.ErrNoRows { return nil, fmt.Errorf("barcode not found") }
 		return nil, err
 	}
 
 	if status.String == "STAGED" {
 		if existingSession.String == sessionID {
-			return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String}}, nil
+			return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
 		}
 		return nil, fmt.Errorf("item staged elsewhere")
 	}
-	if status.String != "IN_STOCK" {
-		return nil, fmt.Errorf("item not available")
-	}
+	if status.String != "IN_STOCK" { return nil, fmt.Errorf("item not available") }
 
 	res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'STAGED', checkout_session_id = ? WHERE serial = ? AND status = 'IN_STOCK'", sessionID, barcode)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return nil, fmt.Errorf("concurrency conflict")
-	}
+	if affected == 0 { return nil, fmt.Errorf("concurrency conflict") }
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String}}, nil
+	if err := tx.Commit(); err != nil { return nil, err }
+	return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
 }
 
 func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (map[string]interface{}, error) {

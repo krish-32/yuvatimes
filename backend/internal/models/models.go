@@ -1,10 +1,12 @@
 package models
 
 type Product struct {
-	ID          string `json:"id"`
-	ProductType string `json:"productType"`
-	Brand       string `json:"brand"`
-	Model       string `json:"model"`
+	ID            string  `json:"id"`
+	ProductType   string  `json:"productType"`
+	Brand         string  `json:"brand"`
+	Model         string  `json:"model"`
+	PurchasePrice float64 `json:"purchasePrice"`
+	SellingPrice  float64 `json:"sellingPrice"`
 }
 
 type Barcode struct {

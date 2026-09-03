@@ -34,10 +34,12 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ProductType string `json:"productType"`
-		Brand       string `json:"brand"`
-		Model       string `json:"model"`
-		Quantity    int    `json:"quantity"`
+		ProductType   string  `json:"productType"`
+		Brand         string  `json:"brand"`
+		Model         string  `json:"model"`
+		Quantity      int     `json:"quantity"`
+		PurchasePrice float64 `json:"purchasePrice"`
+		SellingPrice  float64 `json:"sellingPrice"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
@@ -65,7 +67,7 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batchID, req.ProductType, req.Brand, req.Model, barcodes)
+	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batchID, req.ProductType, req.Brand, req.Model, req.PurchasePrice, req.SellingPrice, barcodes)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -73,7 +75,7 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 
 	res := map[string]interface{}{
 		"batchId":      batchID,
-		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model},
+		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model, "purchasePrice": prod.PurchasePrice, "sellingPrice": prod.SellingPrice},
 		"barcodes":     resBarcodes,
 		"expiresAt":    time.Now().Add(30 * time.Minute),
 	}
