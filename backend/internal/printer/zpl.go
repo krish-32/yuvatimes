@@ -7,11 +7,9 @@ func GenerateWatchTagZPL(brand, model, price, serial string) string {
 	zpl := `^XA
 ^PW400
 ^LL120
-^FO10,10^A0N,20,20^FD%s^FS
-^FO10,35^A0N,20,20^FD%s^FS
-^FO10,60^A0N,20,20^FD%s^FS
-^BY1
-^FO160,15^BCN,60,Y,N,N^FD%s^FS
+^FO10,5^A0N,20,20^FD%s - %s^FS
+^FO10,30^A0N,20,20^FD%s^FS
+^FO10,55^BCN,45,Y,N,N^FD%s^FS
 ^XZ`
 	return fmt.Sprintf(zpl, brand, model, price, serial)
 }

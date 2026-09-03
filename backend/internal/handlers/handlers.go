@@ -60,7 +60,7 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 		if len(prefix) > 3 {
 			prefix = prefix[:3]
 		}
-		serial := fmt.Sprintf("%s-%s-%s", strings.ToUpper(prefix), time.Now().Format("20060102"), strings.ToUpper(uid))
+		serial := fmt.Sprintf("%s-%s", strings.ToUpper(prefix), strings.ToUpper(uid))
 		barcodes = append(barcodes, serial)
 		resBarcodes = append(resBarcodes, map[string]interface{}{
 			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,
