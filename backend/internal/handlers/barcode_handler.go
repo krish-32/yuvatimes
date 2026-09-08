@@ -38,7 +38,6 @@ func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PrinterIP string   `json:"printerIp"`
 		Brand     string   `json:"brand"`
 		Model     string   `json:"model"`
 		Price     string   `json:"price"`
@@ -49,8 +48,8 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.PrinterIP == "" || len(req.Serials) == 0 || req.Brand == "" {
-		respondError(w, http.StatusBadRequest, "missing required fields (printerIp, brand, serials)")
+	if len(req.Serials) == 0 || req.Brand == "" {
+		respondError(w, http.StatusBadRequest, "missing required fields (brand, serials)")
 		return
 	}
 
@@ -59,10 +58,9 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 		fullZPL += printer.GenerateWatchTagZPL(req.Brand, req.Model, req.Price, serial)
 	}
 
-	if err := printer.SendZPLToPrinter(req.PrinterIP, fullZPL); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
+	res := map[string]interface{}{
+		"zpl": fullZPL,
 	}
 
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: fmt.Sprintf("Print job for %d labels sent to printer", len(req.Serials))})
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: fmt.Sprintf("Generated ZPL for %d labels", len(req.Serials)), Data: res})
 }
