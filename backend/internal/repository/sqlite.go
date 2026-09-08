@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"backend/internal/models"
+
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -93,6 +95,9 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 		_, err = tx.ExecContext(ctx, "INSERT INTO barcodes (serial, batch_id, product_id, status) VALUES (?, ?, ?, 'DRAFT')",
 			b, batchID, productID)
 		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				return nil, fmt.Errorf("duplicate serial detected (%s), please generate again", b)
+			}
 			return nil, err
 		}
 	}
@@ -105,18 +110,14 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 
 func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer tx.Rollback()
 
 	var productID string
 	var createdAt time.Time
 	err = tx.QueryRowContext(ctx, "SELECT product_id, created_at FROM barcodes WHERE batch_id = ? LIMIT 1", batchID).Scan(&productID, &createdAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("batch not found")
-		}
+		if err == sql.ErrNoRows { return nil, fmt.Errorf("batch not found") }
 		return nil, err
 	}
 
@@ -125,25 +126,33 @@ func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[strin
 	}
 
 	res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'IN_STOCK' WHERE batch_id = ? AND status = 'DRAFT'", batchID)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	affected, _ := res.RowsAffected()
+	if affected == 0 { return nil, fmt.Errorf("batch already committed or no drafts found") }
 
+	if err := tx.Commit(); err != nil { return nil, err }
+	return map[string]interface{}{"status": "committed", "affected_units": affected}, nil
+}
+
+func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+
+	// Delete draft barcodes
+	res, err := tx.ExecContext(ctx, "DELETE FROM barcodes WHERE batch_id = ? AND status = 'DRAFT'", batchID)
+	if err != nil { return err }
+	
+	affected, _ := res.RowsAffected()
 	if affected == 0 {
-		var count int
-		tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM barcodes WHERE batch_id = ? AND status = 'IN_STOCK'", batchID).Scan(&count)
-		if count > 0 {
-			return map[string]interface{}{"batchId": batchID, "status": "COMMITTED", "productId": productID, "inventoryItemCount": count}, nil
-		}
-		return nil, fmt.Errorf("batch not found or already processed")
+		return fmt.Errorf("no draft records found for batch or batch already committed")
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
+	// Clean up orphaned products
+	_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id NOT IN (SELECT DISTINCT product_id FROM barcodes)")
+	if err != nil { return err }
 
-	return map[string]interface{}{"batchId": batchID, "status": "COMMITTED", "productId": productID, "inventoryItemCount": int(affected)}, nil
+	return tx.Commit()
 }
 
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {

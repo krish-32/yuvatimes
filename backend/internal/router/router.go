@@ -21,6 +21,7 @@ func New(h *handlers.Handler) *chi.Mux {
 		r.Route("/inventory", func(r chi.Router) {
 			r.Post("/barcode-batches", h.GenerateBarcodes)
 			r.Post("/barcode-batches/{batchId}/commit", h.CommitBatch)
+			r.Post("/barcode-batches/{batchId}/revert", h.RevertBatch)
 			r.Get("/products", h.GetProducts)
 			r.Get("/barcodes/{barcodeValue}", h.SearchBarcode)
 		})

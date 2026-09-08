@@ -102,6 +102,22 @@ func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
 
+func (h *Handler) RevertBatch(w http.ResponseWriter, r *http.Request) {
+	batchID := chi.URLParam(r, "batchId")
+	if batchID == "" {
+		respondError(w, http.StatusBadRequest, "batchId required")
+		return
+	}
+
+	err := h.Repo.RevertBatch(r.Context(), batchID)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Batch reverted and drafts deleted successfully"})
+}
+
 func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
