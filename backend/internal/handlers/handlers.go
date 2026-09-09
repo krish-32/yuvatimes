@@ -54,8 +54,19 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 	var resBarcodes []map[string]interface{}
 
 	for i := 0; i < req.Quantity; i++ {
-		uid := strings.Split(uuid.New().String(), "-")[0]
-		serial := strings.ToUpper(uid)
+		var serial string
+		for {
+			uid := strings.Split(uuid.New().String(), "-")[0]
+			serial = strings.ToUpper(uid)
+			exists, err := h.Repo.CheckSerialExists(r.Context(), serial)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "database error checking serial uniqueness")
+				return
+			}
+			if !exists {
+				break
+			}
+		}
 		barcodes = append(barcodes, serial)
 		resBarcodes = append(resBarcodes, map[string]interface{}{
 			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,

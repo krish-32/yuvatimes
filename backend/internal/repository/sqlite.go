@@ -155,6 +155,19 @@ func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {
 	return tx.Commit()
 }
 
+func (r *Repository) CheckSerialExists(ctx context.Context, serial string) (bool, error) {
+	var dummy int
+	// SELECT 1 with LIMIT 1 is the most performant existence check in SQL
+	err := r.DB.QueryRowContext(ctx, "SELECT 1 FROM barcodes WHERE serial = ? LIMIT 1", serial).Scan(&dummy)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // Serial is unique!
+		}
+		return false, err // Actual database error
+	}
+	return true, nil // Serial already exists
+}
+
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {
 	query := `
 		SELECT p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
