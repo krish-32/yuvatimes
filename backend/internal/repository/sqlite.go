@@ -43,7 +43,7 @@ func (r *Repository) initSchema() error {
 			purchase_price REAL DEFAULT 0.0,
 			selling_price REAL DEFAULT 0.0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(product_type, brand, model)
+			UNIQUE(product_type, brand, model, purchase_price, selling_price)
 		);`,
 		`CREATE TABLE IF NOT EXISTS barcodes (
 			serial TEXT PRIMARY KEY,
@@ -73,7 +73,7 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 	defer tx.Rollback()
 
 	var productID string
-	err = tx.QueryRowContext(ctx, "SELECT id FROM products WHERE product_type = ? AND brand = ? AND model = ?", pType, brand, model).Scan(&productID)
+	err = tx.QueryRowContext(ctx, "SELECT id FROM products WHERE product_type = ? COLLATE NOCASE AND brand = ? COLLATE NOCASE AND model = ? COLLATE NOCASE AND purchase_price = ? AND selling_price = ?", pType, brand, model, pPrice, sPrice).Scan(&productID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			productID = uuid.New().String()
@@ -83,10 +83,6 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 		} else {
 			return nil, err
 		}
-	} else {
-		// Product exists, update prices to the latest provided values
-		_, err = tx.ExecContext(ctx, "UPDATE products SET purchase_price = ?, selling_price = ? WHERE id = ?", pPrice, sPrice, productID)
-		if err != nil { return nil, err }
 	}
 
 	prod := &models.Product{ID: productID, ProductType: pType, Brand: brand, Model: model, PurchasePrice: pPrice, SellingPrice: sPrice}
