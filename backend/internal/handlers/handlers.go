@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,11 +55,7 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 
 	for i := 0; i < req.Quantity; i++ {
 		uid := strings.Split(uuid.New().String(), "-")[0]
-		prefix := req.ProductType
-		if len(prefix) > 3 {
-			prefix = prefix[:3]
-		}
-		serial := fmt.Sprintf("%s-%s", strings.ToUpper(prefix), strings.ToUpper(uid))
+		serial := strings.ToUpper(uid)
 		barcodes = append(barcodes, serial)
 		resBarcodes = append(resBarcodes, map[string]interface{}{
 			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,
