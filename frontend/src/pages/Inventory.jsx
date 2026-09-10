@@ -126,8 +126,22 @@ export default function Inventory() {
         price: activeWorkflowBatch.sellingPrice ? activeWorkflowBatch.sellingPrice.toString() : "0",
         serials: activeWorkflowBatch.serials
       };
-      // Send silent print job to the backend
-      await printZpl(payload);
+      // 1. Get the ZPL code from the backend
+      const response = await printZpl(payload);
+      const zplData = response.data?.zpl || response.zpl || response;
+
+      // 2. Send the ZPL code to the local printer (e.g. Zebra Browser Print)
+      try {
+        await fetch('http://127.0.0.1:9101/write', {
+          method: 'POST',
+          body: zplData,
+          mode: 'no-cors' // Prevent CORS blocking for local utility
+        });
+      } catch (printErr) {
+        console.error("Local print failed:", printErr);
+        throw new Error("Could not communicate with local printer. Ensure Zebra Browser Print is running.");
+      }
+
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
     } catch (err) {
