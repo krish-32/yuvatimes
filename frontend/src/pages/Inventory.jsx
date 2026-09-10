@@ -36,13 +36,12 @@ export default function Inventory() {
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
 
-  // Batch form state
   const [batchForm, setBatchForm] = useState({
-    product_type: "watch",
+    productType: "watch",
     brand: "",
     model: "",
-    purchase_price: "",
-    selling_price: "",
+    purchasePrice: "",
+    sellingPrice: "",
     quantity: 1,
   });
   const [formError, setFormError] = useState(null);
@@ -74,11 +73,11 @@ export default function Inventory() {
     }
     try {
       const payload = {
-        productType: batchForm.product_type,
+        productType: batchForm.productType,
         brand: batchForm.brand,
         model: batchForm.model,
-        purchasePrice: parseFloat(batchForm.purchase_price) || 0,
-        sellingPrice: parseFloat(batchForm.selling_price) || 0,
+        purchasePrice: parseFloat(batchForm.purchasePrice) || 0,
+        sellingPrice: parseFloat(batchForm.sellingPrice) || 0,
         quantity: parseInt(batchForm.quantity, 10) || 1,
       };
       const response = await generateBatch(payload);
@@ -101,11 +100,11 @@ export default function Inventory() {
       
       setShowBatchForm(false);
       setBatchForm({
-        product_type: "watch",
+        productType: "watch",
         brand: "",
         model: "",
-        purchase_price: "",
-        selling_price: "",
+        purchasePrice: "",
+        sellingPrice: "",
         quantity: 1,
       });
 
@@ -284,7 +283,7 @@ export default function Inventory() {
                     className="border-b border-white/20 hover:bg-white/20 transition-colors"
                   >
                     <td className="px-6 py-3 text-sm text-primary-800">
-                      {p.product_type || p.type || "—"}
+                      {p.productType || p.type || "—"}
                     </td>
                     <td className="px-6 py-3 text-sm font-medium text-primary-800">
                       {p.brand || "—"}
@@ -293,24 +292,24 @@ export default function Inventory() {
                       {p.model || "—"}
                     </td>
                     <td className="px-6 py-3 text-sm text-right text-primary-700">
-                      ${(p.purchase_price || 0).toFixed(2)}
+                      ${(p.purchasePrice || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-right font-semibold text-primary-800">
-                      ${(p.selling_price || 0).toFixed(2)}
+                      ${(p.sellingPrice || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-center text-primary-700">
-                      {p.total_units || p.total || 0}
+                      {p.totalUnits || 0}
                     </td>
                     <td className="px-6 py-3 text-sm text-center">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium
                           ${
-                            (p.available_units || p.available || 0) <= 5
+                            (p.availableUnits || 0) <= 5
                               ? "bg-secondary-500/20 text-secondary-700"
                               : "bg-green-500/20 text-green-700"
                           }`}
                       >
-                        {p.available_units || p.available || 0}
+                        {p.availableUnits || 0}
                       </span>
                     </td>
                   </tr>
@@ -486,9 +485,9 @@ export default function Inventory() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <GlassInput
               label="Product Type"
-              value={batchForm.product_type}
+              value={batchForm.productType}
               onChange={(e) =>
-                setBatchForm({ ...batchForm, product_type: e.target.value })
+                setBatchForm({ ...batchForm, productType: e.target.value })
               }
               placeholder="watch"
             />
@@ -524,9 +523,9 @@ export default function Inventory() {
               type="number"
               step="0.01"
               min="0"
-              value={batchForm.purchase_price}
+              value={batchForm.purchasePrice}
               onChange={(e) =>
-                setBatchForm({ ...batchForm, purchase_price: e.target.value })
+                setBatchForm({ ...batchForm, purchasePrice: e.target.value })
               }
               placeholder="0.00"
             />
@@ -535,9 +534,9 @@ export default function Inventory() {
               type="number"
               step="0.01"
               min="0"
-              value={batchForm.selling_price}
+              value={batchForm.sellingPrice}
               onChange={(e) =>
-                setBatchForm({ ...batchForm, selling_price: e.target.value })
+                setBatchForm({ ...batchForm, sellingPrice: e.target.value })
               }
               placeholder="0.00"
             />

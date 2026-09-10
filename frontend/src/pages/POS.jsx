@@ -123,7 +123,7 @@ export default function POS() {
 
   // Calculate totals from cart items
   const subtotal = items.reduce(
-    (sum, item) => sum + (item.selling_price || item.price || 0),
+    (sum, item) => sum + (item.sellingPrice || item.price || 0),
     0
   );
   const taxRate = 0.08;
@@ -266,7 +266,7 @@ export default function POS() {
                       </div>
                       <div className="flex items-center gap-3 ml-3">
                         <span className="text-sm font-semibold text-primary-800">
-                          ${(item.selling_price || item.price || 0).toFixed(2)}
+                          ${(item.sellingPrice || item.price || 0).toFixed(2)}
                         </span>
                         <button
                           onClick={() => handleRemove(item.serial || item.barcode)}
