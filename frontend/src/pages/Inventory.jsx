@@ -19,6 +19,7 @@ import { useInventoryAPI } from "../hooks/useInventoryAPI";
 export default function Inventory() {
   const {
     getProducts,
+    getDraftBatches,
     generateBatch,
     printZpl,
     commitBatch,
@@ -48,13 +49,17 @@ export default function Inventory() {
 
   const loadProducts = useCallback(async () => {
     try {
-      const response = await getProducts();
-      const data = response.data || response;
-      setProducts(Array.isArray(data) ? data : data.items || []);
+      const pRes = await getProducts();
+      const pData = pRes.data || pRes;
+      setProducts(Array.isArray(pData) ? pData : pData.items || []);
+
+      const dRes = await getDraftBatches();
+      const dData = dRes.data || dRes;
+      setBatches(Array.isArray(dData) ? dData : []);
     } catch (err) {
       setLoadError(err.message);
     }
-  }, [getProducts]);
+  }, [getProducts, getDraftBatches]);
 
   useEffect(() => {
     loadProducts();
@@ -89,7 +94,11 @@ export default function Inventory() {
         ...payload,
         status: "DRAFT",
       };
-      setBatches((prev) => [batch, ...prev]);
+      
+      // Auto-trigger the 2-step workflow immediately
+      setActiveWorkflowBatch(batch);
+      setWorkflowStep(1);
+      
       setShowBatchForm(false);
       setBatchForm({
         product_type: "watch",
@@ -99,10 +108,9 @@ export default function Inventory() {
         selling_price: "",
         quantity: 1,
       });
-      
-      // Auto-trigger the 2-step workflow immediately
-      setActiveWorkflowBatch(batch);
-      setWorkflowStep(1);
+
+      // Refresh to ensure new drafts are in the main list
+      loadProducts();
     } catch (err) {
       setFormError(err.message);
     }

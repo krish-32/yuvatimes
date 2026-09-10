@@ -117,10 +117,6 @@ func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[strin
 		return nil, err
 	}
 
-	if time.Now().UTC().After(createdAt.Add(30 * time.Minute)) {
-		return nil, fmt.Errorf("batch expired")
-	}
-
 	res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'IN_STOCK' WHERE batch_id = ? AND status = 'DRAFT'", batchID)
 	if err != nil { return nil, err }
 	affected, _ := res.RowsAffected()
@@ -128,6 +124,44 @@ func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[strin
 
 	if err := tx.Commit(); err != nil { return nil, err }
 	return map[string]interface{}{"status": "committed", "affected_units": affected}, nil
+}
+
+func (r *Repository) GetDraftBatches(ctx context.Context) ([]map[string]interface{}, error) {
+	query := `
+		SELECT b.batch_id, p.brand, p.model, p.purchase_price, p.selling_price, GROUP_CONCAT(b.serial) as serials
+		FROM barcodes b
+		JOIN products p ON b.product_id = p.id
+		WHERE b.status = 'DRAFT'
+		GROUP BY b.batch_id
+		ORDER BY p.created_at DESC
+	`
+	rows, err := r.DB.QueryContext(ctx, query)
+	if err != nil { return nil, err }
+	defer rows.Close()
+
+	var drafts []map[string]interface{}
+	for rows.Next() {
+		var batchID, brand, model, serialsStr string
+		var pPrice, sPrice float64
+		if err := rows.Scan(&batchID, &brand, &model, &pPrice, &sPrice, &serialsStr); err != nil {
+			return nil, err
+		}
+		
+		serials := strings.Split(serialsStr, ",")
+		drafts = append(drafts, map[string]interface{}{
+			"batchId": batchID,
+			"brand": brand,
+			"model": model,
+			"purchasePrice": pPrice,
+			"sellingPrice": sPrice,
+			"serials": serials,
+			"status": "DRAFT",
+		})
+	}
+	if drafts == nil {
+		drafts = []map[string]interface{}{}
+	}
+	return drafts, nil
 }
 
 func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {

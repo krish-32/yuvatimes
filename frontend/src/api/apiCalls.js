@@ -5,6 +5,7 @@ import api from './api';
 // ==========================================
 export const inventoryService = {
   getProducts: () => api.get('/api/inventory/products'),
+  getDraftBatches: () => api.get('/api/inventory/barcode-batches/drafts'),
   generateBatch: (payload) => api.post('/api/inventory/barcode-batches', payload),
   printZpl: (payload) => api.post('/api/v1/barcodes/print-zpl', payload),
   commitBatch: (batchId) => api.post(`/api/inventory/barcode-batches/${batchId}/commit`, {}, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),

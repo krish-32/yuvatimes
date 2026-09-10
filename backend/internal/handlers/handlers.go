@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"backend/internal/models"
 	"backend/internal/repository"
@@ -83,7 +82,6 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 		"batchId":      batchID,
 		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model, "purchasePrice": prod.PurchasePrice, "sellingPrice": prod.SellingPrice},
 		"barcodes":     resBarcodes,
-		"expiresAt":    time.Now().Add(30 * time.Minute),
 	}
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
@@ -121,7 +119,16 @@ func (h *Handler) RevertBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Batch reverted and drafts deleted successfully"})
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Batch reverted"})
+}
+
+func (h *Handler) GetDraftBatches(w http.ResponseWriter, r *http.Request) {
+	drafts, err := h.Repo.GetDraftBatches(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: drafts})
 }
 
 func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {

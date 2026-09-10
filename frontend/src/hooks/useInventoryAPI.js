@@ -28,7 +28,15 @@ export function useInventoryAPI() {
     }
   }, []);
 
-  const getProducts = useCallback(() => wrap(() => inventoryService.getProducts()), [wrap]);
+  const getProducts = useCallback(
+    () => wrap(() => inventoryService.getProducts()),
+    [wrap]
+  );
+
+  const getDraftBatches = useCallback(
+    () => wrap(() => inventoryService.getDraftBatches()),
+    [wrap]
+  );
 
   const generateBatch = useCallback(
     (payload) => wrap(() => inventoryService.generateBatch(payload)),
@@ -54,6 +62,7 @@ export function useInventoryAPI() {
     loading,
     error,
     getProducts,
+    getDraftBatches,
     generateBatch,
     printZpl,
     commitBatch,
