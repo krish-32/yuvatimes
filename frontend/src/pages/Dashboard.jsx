@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Package, DollarSign, TrendingUp, ScanLine, ArrowRight, Clock, AlertCircle } from 'lucide-react';
-import GlassCard from '../components/GlassCard';
-import { useInventoryAPI } from '../hooks/useInventoryAPI';
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import {
+  Package,
+  DollarSign,
+  TrendingUp,
+  ScanLine,
+  ArrowRight,
+  Clock,
+  AlertCircle,
+} from "lucide-react";
+import GlassCard from "../components/GlassCard";
+import { useInventoryAPI } from "../hooks/useInventoryAPI";
 
 export default function Dashboard() {
   const { getProducts, loading, error } = useInventoryAPI();
@@ -13,7 +21,7 @@ export default function Dashboard() {
     const load = async () => {
       try {
         const data = await getProducts();
-        setProducts(Array.isArray(data) ? data : data.products || []);
+        setProducts(Array.isArray(data) ? data : data.data || []);
       } catch (err) {
         setLoadError(err.message);
       }
@@ -23,44 +31,51 @@ export default function Dashboard() {
 
   // Derive stats from catalog data
   const totalProducts = products.length;
-  const totalUnits = products.reduce((sum, p) => sum + (p.total_units || p.total || 0), 0);
-  const availableUnits = products.reduce((sum, p) => sum + (p.available_units || p.available || 0), 0);
+  const totalUnits = products.reduce(
+    (sum, p) => sum + (p.totalUnits || p.total || 0),
+    0,
+  );
+  const availableUnits = products.reduce(
+    (sum, p) => sum + (p.availableUnits || p.available || 0),
+    0,
+  );
   const totalValue = products.reduce(
-    (sum, p) => sum + (p.selling_price || 0) * (p.available_units || p.available || 0),
-    0
+    (sum, p) =>
+      sum + (p.sellingPrice || 0) * (p.availableUnits || p.available || 0),
+    0,
   );
   const lowStock = products.filter(
-    (p) => (p.available_units || p.available || 0) <= 5
+    (p) => (p.availableUnits || p.available || 0) <= 5,
   );
 
   const stats = [
     {
-      label: 'Total Products',
+      label: "Total Products",
       value: totalProducts,
       icon: Package,
-      color: 'text-primary-600',
-      bg: 'bg-primary-500/15',
+      color: "text-primary-600",
+      bg: "bg-primary-500/15",
     },
     {
-      label: 'Total Units',
+      label: "Total Units",
       value: totalUnits,
       icon: TrendingUp,
-      color: 'text-secondary-600',
-      bg: 'bg-secondary-500/15',
+      color: "text-secondary-600",
+      bg: "bg-secondary-500/15",
     },
     {
-      label: 'Available Units',
+      label: "Available Units",
       value: availableUnits,
       icon: Clock,
-      color: 'text-green-600',
-      bg: 'bg-green-500/15',
+      color: "text-green-600",
+      bg: "bg-green-500/15",
     },
     {
-      label: 'Inventory Value',
-      value: `$${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      label: "Inventory Value",
+      value: `$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
       icon: DollarSign,
-      color: 'text-primary-700',
-      bg: 'bg-accent-200/40',
+      color: "text-primary-700",
+      bg: "bg-accent-200/40",
     },
   ];
 
@@ -71,7 +86,9 @@ export default function Dashboard() {
         <h1 className="font-display text-2xl lg:text-3xl font-bold text-primary-800">
           Dashboard
         </h1>
-        <p className="text-primary-700/60 mt-1">Overview of your watch inventory and sales</p>
+        <p className="text-primary-700/60 mt-1">
+          Overview of your watch inventory and sales
+        </p>
       </div>
 
       {/* Error banner */}
@@ -96,10 +113,12 @@ export default function Dashboard() {
                   {stat.label}
                 </p>
                 <p className="text-xl lg:text-2xl font-display font-bold text-primary-800 mt-2">
-                  {loading ? '...' : stat.value}
+                  {loading ? "..." : stat.value}
                 </p>
               </div>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.bg}`}>
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.bg}`}
+              >
                 <stat.icon className={stat.color} size={20} />
               </div>
             </div>
@@ -117,8 +136,12 @@ export default function Dashboard() {
                   <Package className="text-primary-600" size={24} />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold text-primary-800">Inventory</h3>
-                  <p className="text-sm text-primary-700/60">Manage catalog & generate barcodes</p>
+                  <h3 className="font-display font-semibold text-primary-800">
+                    Inventory
+                  </h3>
+                  <p className="text-sm text-primary-700/60">
+                    Manage catalog & generate barcodes
+                  </p>
                 </div>
               </div>
               <ArrowRight className="text-primary-600" size={20} />
@@ -134,8 +157,12 @@ export default function Dashboard() {
                   <ScanLine className="text-secondary-600" size={24} />
                 </div>
                 <div>
-                  <h3 className="font-display font-semibold text-primary-800">POS Checkout</h3>
-                  <p className="text-sm text-primary-700/60">Scan watches and complete sales</p>
+                  <h3 className="font-display font-semibold text-primary-800">
+                    POS Checkout
+                  </h3>
+                  <p className="text-sm text-primary-700/60">
+                    Scan watches and complete sales
+                  </p>
                 </div>
               </div>
               <ArrowRight className="text-secondary-600" size={20} />
@@ -149,7 +176,9 @@ export default function Dashboard() {
         <GlassCard>
           <div className="flex items-center gap-2 mb-4">
             <AlertCircle className="text-secondary-600" size={20} />
-            <h3 className="font-display font-semibold text-primary-800">Low Stock Alert</h3>
+            <h3 className="font-display font-semibold text-primary-800">
+              Low Stock Alert
+            </h3>
           </div>
           <div className="space-y-2">
             {lowStock.map((p, i) => (
@@ -161,7 +190,7 @@ export default function Dashboard() {
                   {p.brand} {p.model}
                 </span>
                 <span className="text-sm font-bold text-secondary-600">
-                  {p.available_units || p.available || 0} left
+                  {p.availableUnits || p.available || 0} left
                 </span>
               </div>
             ))}
