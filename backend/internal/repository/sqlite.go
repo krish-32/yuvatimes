@@ -234,7 +234,7 @@ func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (
 
 	if status.String == "STAGED" {
 		if existingSession.String == sessionID {
-			return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
+			return map[string]interface{}{"sessionId": sessionID, "cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
 		}
 		return nil, fmt.Errorf("item staged elsewhere")
 	}
@@ -246,7 +246,50 @@ func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (
 	if affected == 0 { return nil, fmt.Errorf("concurrency conflict") }
 
 	if err := tx.Commit(); err != nil { return nil, err }
-	return map[string]interface{}{"cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
+	return map[string]interface{}{"sessionId": sessionID, "cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
+}
+
+func (r *Repository) GetStagedItems(ctx context.Context, sessionID string) ([]map[string]interface{}, error) {
+	query := `
+		SELECT b.serial, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
+		FROM barcodes b
+		JOIN products p ON b.product_id = p.id
+		WHERE b.checkout_session_id = ? AND b.status = 'STAGED'
+	`
+	rows, err := r.DB.QueryContext(ctx, query, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []map[string]interface{}
+	for rows.Next() {
+		var barcode, pType, pBrand, pModel sql.NullString
+		var pPrice, sPrice sql.NullFloat64
+		if err := rows.Scan(&barcode, &pType, &pBrand, &pModel, &pPrice, &sPrice); err != nil {
+			return nil, err
+		}
+		items = append(items, map[string]interface{}{
+			"sessionId": sessionID,
+			"cartItemId": barcode.String,
+			"inventoryItemId": barcode.String,
+			"barcode": barcode.String,
+			"status": "STAGED",
+			"product": map[string]interface{}{
+				"productType": pType.String,
+				"brand": pBrand.String,
+				"model": pModel.String,
+				"purchasePrice": pPrice.Float64,
+				"sellingPrice": sPrice.Float64,
+			},
+		})
+	}
+	
+	// If items is nil, return an empty array instead of null for standard JSON compliance
+	if items == nil {
+		items = []map[string]interface{}{}
+	}
+	return items, nil
 }
 
 func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (map[string]interface{}, error) {

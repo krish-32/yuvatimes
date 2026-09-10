@@ -188,6 +188,18 @@ func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
 
+func (h *Handler) GetCartItems(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	
+	items, err := h.Repo.GetStagedItems(r.Context(), sessionID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to fetch cart items")
+		return
+	}
+	
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: items})
+}
+
 func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	idemKey := r.Header.Get("Idempotency-Key")

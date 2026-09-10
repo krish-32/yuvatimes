@@ -27,6 +27,7 @@ func New(h *handlers.Handler) *chi.Mux {
 		})
 
 		r.Route("/checkout/sessions/{sessionId}", func(r chi.Router) {
+			r.Get("/items", h.GetCartItems)
 			r.Post("/items", h.StageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
 		})
