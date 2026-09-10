@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from "react";
 import {
   Package,
   Plus,
@@ -9,12 +9,12 @@ import {
   Loader2,
   AlertCircle,
   Tag,
-} from 'lucide-react';
-import GlassCard from '../components/GlassCard';
-import GlassInput from '../components/GlassInput';
-import GlassButton from '../components/GlassButton';
-import GlassModal from '../components/GlassModal';
-import { useInventoryAPI } from '../hooks/useInventoryAPI';
+} from "lucide-react";
+import GlassCard from "../components/GlassCard";
+import GlassInput from "../components/GlassInput";
+import GlassButton from "../components/GlassButton";
+import GlassModal from "../components/GlassModal";
+import { useInventoryAPI } from "../hooks/useInventoryAPI";
 
 export default function Inventory() {
   const {
@@ -36,20 +36,20 @@ export default function Inventory() {
 
   // Batch form state
   const [batchForm, setBatchForm] = useState({
-    product_type: 'watch',
-    brand: '',
-    model: '',
-    purchase_price: '',
-    selling_price: '',
+    product_type: "watch",
+    brand: "",
+    model: "",
+    purchase_price: "",
+    selling_price: "",
     quantity: 1,
   });
   const [formError, setFormError] = useState(null);
 
   const loadProducts = useCallback(async () => {
     try {
-      setLoadError(null);
-      const data = await getProducts();
-      setProducts(Array.isArray(data) ? data : data.products || []);
+      const response = await getProducts();
+      const data = response.data || response;
+      setProducts(Array.isArray(data) ? data : data.items || []);
     } catch (err) {
       setLoadError(err.message);
     }
@@ -63,31 +63,39 @@ export default function Inventory() {
     e.preventDefault();
     setFormError(null);
     if (!batchForm.brand || !batchForm.model) {
-      setFormError('Brand and model are required');
+      setFormError("Brand and model are required");
       return;
     }
     try {
       const payload = {
-        ...batchForm,
-        purchase_price: parseFloat(batchForm.purchase_price) || 0,
-        selling_price: parseFloat(batchForm.selling_price) || 0,
+        productType: batchForm.product_type,
+        brand: batchForm.brand,
+        model: batchForm.model,
+        purchasePrice: parseFloat(batchForm.purchase_price) || 0,
+        sellingPrice: parseFloat(batchForm.selling_price) || 0,
         quantity: parseInt(batchForm.quantity, 10) || 1,
       };
-      const data = await generateBatch(payload);
+      const response = await generateBatch(payload);
+      const data = response.data || response;
+      console.log(data);
+
+      const rawSerials = data.serials || data.barcodes || [];
+      const serialList = rawSerials.map(b => typeof b === 'string' ? b : (b.serial || b.barcodeValue));
+
       const batch = {
         batchId: data.batch_id || data.batchId || data.id,
-        serials: data.serials || data.barcodes || [],
+        serials: serialList,
         ...payload,
-        status: 'DRAFT',
+        status: "DRAFT",
       };
       setBatches((prev) => [batch, ...prev]);
       setShowBatchForm(false);
       setBatchForm({
-        product_type: 'watch',
-        brand: '',
-        model: '',
-        purchase_price: '',
-        selling_price: '',
+        product_type: "watch",
+        brand: "",
+        model: "",
+        purchase_price: "",
+        selling_price: "",
         quantity: 1,
       });
     } catch (err) {
@@ -99,13 +107,19 @@ export default function Inventory() {
     setActionBatchId(batch.batchId);
     setZplPreview(null);
     try {
-      const zplData = await printZpl(batch.serials);
+      const payload = {
+        brand: batch.brand,
+        model: batch.model,
+        price: batch.sellingPrice ? batch.sellingPrice.toString() : "0",
+        serials: batch.serials
+      };
+      const zplData = await printZpl(payload);
       setZplPreview(zplData);
       await commitBatch(batch.batchId);
       setBatches((prev) =>
         prev.map((b) =>
-          b.batchId === batch.batchId ? { ...b, status: 'IN_STOCK' } : b
-        )
+          b.batchId === batch.batchId ? { ...b, status: "IN_STOCK" } : b,
+        ),
       );
     } catch (err) {
       setFormError(err.message);
@@ -139,8 +153,12 @@ export default function Inventory() {
           </p>
         </div>
         <div className="flex gap-3">
-          <GlassButton variant="secondary" onClick={loadProducts} disabled={loading}>
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <GlassButton
+            variant="secondary"
+            onClick={loadProducts}
+            disabled={loading}
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             Refresh
           </GlassButton>
           <GlassButton onClick={() => setShowBatchForm(true)}>
@@ -155,7 +173,9 @@ export default function Inventory() {
         <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
           <div className="flex items-center gap-3 text-secondary-700">
             <AlertCircle size={20} />
-            <span className="text-sm font-medium">{loadError || error || formError}</span>
+            <span className="text-sm font-medium">
+              {loadError || error || formError}
+            </span>
           </div>
         </GlassCard>
       )}
@@ -164,32 +184,54 @@ export default function Inventory() {
       <GlassCard className="!p-0 overflow-hidden">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-white/30">
           <Package className="text-primary-600" size={20} />
-          <h2 className="font-display font-semibold text-primary-800">Product Catalog</h2>
+          <h2 className="font-display font-semibold text-primary-800">
+            Product Catalog
+          </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/30">
-                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Type</th>
-                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Brand</th>
-                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Model</th>
-                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Purchase</th>
-                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Selling</th>
-                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Total</th>
-                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">Available</th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Type
+                </th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Brand
+                </th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Model
+                </th>
+                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Purchase
+                </th>
+                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Selling
+                </th>
+                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Total
+                </th>
+                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Available
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading && products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-primary-700/50">
+                  <td
+                    colSpan={7}
+                    className="text-center py-12 text-primary-700/50"
+                  >
                     <Loader2 className="animate-spin inline mr-2" size={18} />
                     Loading products...
                   </td>
                 </tr>
               ) : products.length === 0 && !loadError ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-primary-700/50">
+                  <td
+                    colSpan={7}
+                    className="text-center py-12 text-primary-700/50"
+                  >
                     No products found. Generate a batch to get started.
                   </td>
                 </tr>
@@ -199,9 +241,15 @@ export default function Inventory() {
                     key={i}
                     className="border-b border-white/20 hover:bg-white/20 transition-colors"
                   >
-                    <td className="px-6 py-3 text-sm text-primary-800">{p.product_type || p.type || '—'}</td>
-                    <td className="px-6 py-3 text-sm font-medium text-primary-800">{p.brand || '—'}</td>
-                    <td className="px-6 py-3 text-sm text-primary-700">{p.model || '—'}</td>
+                    <td className="px-6 py-3 text-sm text-primary-800">
+                      {p.product_type || p.type || "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm font-medium text-primary-800">
+                      {p.brand || "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-primary-700">
+                      {p.model || "—"}
+                    </td>
                     <td className="px-6 py-3 text-sm text-right text-primary-700">
                       ${(p.purchase_price || 0).toFixed(2)}
                     </td>
@@ -214,9 +262,10 @@ export default function Inventory() {
                     <td className="px-6 py-3 text-sm text-center">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${(p.available_units || p.available || 0) <= 5
-                            ? 'bg-secondary-500/20 text-secondary-700'
-                            : 'bg-green-500/20 text-green-700'
+                          ${
+                            (p.available_units || p.available || 0) <= 5
+                              ? "bg-secondary-500/20 text-secondary-700"
+                              : "bg-green-500/20 text-green-700"
                           }`}
                       >
                         {p.available_units || p.available || 0}
@@ -247,9 +296,10 @@ export default function Inventory() {
                     </span>
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-xs font-medium
-                        ${batch.status === 'IN_STOCK'
-                          ? 'bg-green-500/20 text-green-700'
-                          : 'bg-accent-200/40 text-primary-700'
+                        ${
+                          batch.status === "IN_STOCK"
+                            ? "bg-green-500/20 text-green-700"
+                            : "bg-accent-200/40 text-primary-700"
                         }`}
                     >
                       {batch.status}
@@ -274,7 +324,7 @@ export default function Inventory() {
                     )}
                   </div>
                 </div>
-                {batch.status === 'DRAFT' && (
+                {batch.status === "DRAFT" && (
                   <div className="flex gap-3">
                     <GlassButton
                       onClick={() => handlePrintAndApprove(batch)}
@@ -294,7 +344,7 @@ export default function Inventory() {
                     </GlassButton>
                   </div>
                 )}
-                {batch.status === 'IN_STOCK' && (
+                {batch.status === "IN_STOCK" && (
                   <div className="flex items-center gap-2 text-green-600 font-medium text-sm">
                     <Check size={18} />
                     Committed to stock
@@ -323,7 +373,7 @@ export default function Inventory() {
             ZPL data for 50x25mm tags. Send this to your Zebra printer:
           </p>
           <pre className="glass-input p-4 text-xs font-mono text-primary-800 overflow-x-auto whitespace-pre-wrap max-h-64">
-            {typeof zplPreview === 'string'
+            {typeof zplPreview === "string"
               ? zplPreview
               : JSON.stringify(zplPreview, null, 2)}
           </pre>
@@ -337,7 +387,10 @@ export default function Inventory() {
         title="Generate Barcode Batch"
         footer={
           <>
-            <GlassButton variant="secondary" onClick={() => setShowBatchForm(false)}>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setShowBatchForm(false)}
+            >
               Cancel
             </GlassButton>
             <GlassButton onClick={handleGenerateBatch} loading={loading}>
@@ -352,7 +405,9 @@ export default function Inventory() {
             <GlassInput
               label="Product Type"
               value={batchForm.product_type}
-              onChange={(e) => setBatchForm({ ...batchForm, product_type: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, product_type: e.target.value })
+              }
               placeholder="watch"
             />
             <GlassInput
@@ -360,19 +415,25 @@ export default function Inventory() {
               type="number"
               min="1"
               value={batchForm.quantity}
-              onChange={(e) => setBatchForm({ ...batchForm, quantity: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, quantity: e.target.value })
+              }
             />
             <GlassInput
               label="Brand"
               value={batchForm.brand}
-              onChange={(e) => setBatchForm({ ...batchForm, brand: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, brand: e.target.value })
+              }
               placeholder="e.g. Rolex"
               required
             />
             <GlassInput
               label="Model"
               value={batchForm.model}
-              onChange={(e) => setBatchForm({ ...batchForm, model: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, model: e.target.value })
+              }
               placeholder="e.g. Submariner"
               required
             />
@@ -382,7 +443,9 @@ export default function Inventory() {
               step="0.01"
               min="0"
               value={batchForm.purchase_price}
-              onChange={(e) => setBatchForm({ ...batchForm, purchase_price: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, purchase_price: e.target.value })
+              }
               placeholder="0.00"
             />
             <GlassInput
@@ -391,12 +454,15 @@ export default function Inventory() {
               step="0.01"
               min="0"
               value={batchForm.selling_price}
-              onChange={(e) => setBatchForm({ ...batchForm, selling_price: e.target.value })}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, selling_price: e.target.value })
+              }
               placeholder="0.00"
             />
           </div>
           <p className="text-xs text-primary-700/50">
-            This will generate {batchForm.quantity} unique 8-character DRAFT UUIDs for barcode labels.
+            This will generate {batchForm.quantity} unique 8-character DRAFT
+            UUIDs for barcode labels.
           </p>
         </form>
       </GlassModal>

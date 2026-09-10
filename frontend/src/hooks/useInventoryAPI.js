@@ -36,7 +36,7 @@ export function useInventoryAPI() {
   );
 
   const printZpl = useCallback(
-    (serials) => wrap(() => inventoryService.printZpl(serials)),
+    (payload) => wrap(() => inventoryService.printZpl(payload)),
     [wrap]
   );
 

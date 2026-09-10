@@ -188,6 +188,22 @@ func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
 }
 
+func (h *Handler) UnstageCartItem(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+	barcode := chi.URLParam(r, "serial")
+	
+	err := h.Repo.UnstageItem(r.Context(), sessionID, barcode)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Item removed from cart"})
+}
+
 func (h *Handler) GetCartItems(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionId")
 	

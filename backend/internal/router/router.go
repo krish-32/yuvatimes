@@ -6,6 +6,7 @@ import (
 	"backend/internal/handlers"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 func New(h *handlers.Handler) *chi.Mux {
@@ -16,6 +17,16 @@ func New(h *handlers.Handler) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+
+	// CORS Middleware
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300, 
+	}))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/inventory", func(r chi.Router) {
@@ -29,6 +40,7 @@ func New(h *handlers.Handler) *chi.Mux {
 		r.Route("/checkout/sessions/{sessionId}", func(r chi.Router) {
 			r.Get("/items", h.GetCartItems)
 			r.Post("/items", h.StageCartItem)
+			r.Delete("/items/{serial}", h.UnstageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
 		})
 

@@ -21,7 +21,8 @@ export function useCheckoutSession(sessionId) {
     setLoading(true);
     setError(null);
     try {
-      const data = await posService.getCartItems(sessionRef.current);
+      const response = await posService.getCartItems(sessionRef.current);
+      const data = response.data || response;
       setItems(Array.isArray(data) ? data : data.items || []);
     } catch (err) {
       setError(err.message);

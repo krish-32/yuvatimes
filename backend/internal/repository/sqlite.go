@@ -292,6 +292,21 @@ func (r *Repository) GetStagedItems(ctx context.Context, sessionID string) ([]ma
 	return items, nil
 }
 
+func (r *Repository) UnstageItem(ctx context.Context, sessionID, barcode string) error {
+	res, err := r.DB.ExecContext(ctx, "UPDATE barcodes SET status = 'IN_STOCK', checkout_session_id = NULL WHERE serial = ? AND checkout_session_id = ? AND status = 'STAGED'", barcode, sessionID)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("item not found in cart")
+	}
+	return nil
+}
+
 func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {

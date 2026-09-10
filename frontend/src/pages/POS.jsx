@@ -180,7 +180,7 @@ export default function POS() {
                   type="text"
                   value={scanInput}
                   onChange={(e) => setScanInput(e.target.value)}
-                  className="glass-input w-full px-5 py-4 text-center text-lg font-mono tracking-widest"
+                  className="glass-input w-full px-5 py-4 text-center text-lg font-mono tracking-widest text-primary-900 bg-white/40"
                   placeholder="Scan or type serial..."
                   autoComplete="off"
                   spellCheck="false"
