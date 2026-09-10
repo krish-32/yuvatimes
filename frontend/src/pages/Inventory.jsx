@@ -31,7 +31,8 @@ export default function Inventory() {
   const [loadError, setLoadError] = useState(null);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batches, setBatches] = useState([]);
-  const [zplPreview, setZplPreview] = useState(null);
+  const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
+  const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
 
   // Batch form state
@@ -98,34 +99,53 @@ export default function Inventory() {
         selling_price: "",
         quantity: 1,
       });
+      
+      // Auto-trigger the 2-step workflow immediately
+      setActiveWorkflowBatch(batch);
+      setWorkflowStep(1);
     } catch (err) {
       setFormError(err.message);
     }
   };
 
-  const handlePrintAndApprove = async (batch) => {
-    setActionBatchId(batch.batchId);
-    setZplPreview(null);
+  const handleSilentPrint = async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
     try {
       const payload = {
-        brand: batch.brand,
-        model: batch.model,
-        price: batch.sellingPrice ? batch.sellingPrice.toString() : "0",
-        serials: batch.serials
+        brand: activeWorkflowBatch.brand,
+        model: activeWorkflowBatch.model,
+        price: activeWorkflowBatch.sellingPrice ? activeWorkflowBatch.sellingPrice.toString() : "0",
+        serials: activeWorkflowBatch.serials
       };
-      const zplData = await printZpl(payload);
-      setZplPreview(zplData);
-      await commitBatch(batch.batchId);
-      setBatches((prev) =>
-        prev.map((b) =>
-          b.batchId === batch.batchId ? { ...b, status: "IN_STOCK" } : b,
-        ),
-      );
+      // Send silent print job to the backend
+      await printZpl(payload);
+      // Automatically transition to step 2 after successful print dispatch
+      setWorkflowStep(2);
     } catch (err) {
-      setFormError(err.message);
-    } finally {
-      setActionBatchId(null);
+      setFormError(`Failed to print: ${err.message}`);
     }
+  };
+
+  const handleConfirmStock = async (confirm) => {
+    if (!activeWorkflowBatch) return;
+    if (confirm) {
+      try {
+        await commitBatch(activeWorkflowBatch.batchId);
+        setBatches((prev) =>
+          prev.map((b) =>
+            b.batchId === activeWorkflowBatch.batchId ? { ...b, status: "IN_STOCK" } : b,
+          ),
+        );
+        loadProducts(); // Refresh catalog
+      } catch (err) {
+        setFormError(err.message);
+        return;
+      }
+    }
+    // Close the workflow modal
+    setActiveWorkflowBatch(null);
+    setWorkflowStep(0);
   };
 
   const handleRevert = async (batch) => {
@@ -327,12 +347,14 @@ export default function Inventory() {
                 {batch.status === "DRAFT" && (
                   <div className="flex gap-3">
                     <GlassButton
-                      onClick={() => handlePrintAndApprove(batch)}
+                      onClick={() => {
+                        setActiveWorkflowBatch(batch);
+                        setWorkflowStep(1);
+                      }}
                       disabled={actionBatchId === batch.batchId}
-                      loading={actionBatchId === batch.batchId}
                     >
                       <Printer size={16} />
-                      Print & Approve
+                      Print Barcode
                     </GlassButton>
                     <GlassButton
                       variant="danger"
@@ -356,27 +378,65 @@ export default function Inventory() {
         </div>
       )}
 
-      {/* ZPL Preview Modal */}
+      {/* Step 1: Draft Review & Print Modal */}
       <GlassModal
-        open={!!zplPreview}
-        onClose={() => setZplPreview(null)}
-        title="ZPL Print Output"
-        size="lg"
+        open={workflowStep === 1 && !!activeWorkflowBatch}
+        onClose={() => setWorkflowStep(0)}
+        title="Step 1: Print Barcode"
         footer={
-          <GlassButton variant="secondary" onClick={() => setZplPreview(null)}>
-            Close
-          </GlassButton>
+          <>
+            <GlassButton variant="secondary" onClick={() => setWorkflowStep(0)}>
+              Cancel
+            </GlassButton>
+            <GlassButton onClick={handleSilentPrint}>
+              <Printer size={16} />
+              Print Barcode
+            </GlassButton>
+          </>
         }
       >
-        <div className="space-y-3">
-          <p className="text-sm text-primary-700/70">
-            ZPL data for 50x25mm tags. Send this to your Zebra printer:
-          </p>
-          <pre className="glass-input p-4 text-xs font-mono text-primary-800 overflow-x-auto whitespace-pre-wrap max-h-64">
-            {typeof zplPreview === "string"
-              ? zplPreview
-              : JSON.stringify(zplPreview, null, 2)}
-          </pre>
+        <div className="space-y-4 text-primary-800">
+          <p className="text-sm">Please review the details for this draft batch before printing.</p>
+          <div className="glass-card p-4 space-y-2">
+            <div className="flex justify-between border-b border-white/20 pb-2">
+              <span className="font-semibold">Brand / Model</span>
+              <span>{activeWorkflowBatch?.brand} {activeWorkflowBatch?.model}</span>
+            </div>
+            <div className="flex justify-between border-b border-white/20 pb-2">
+              <span className="font-semibold">Selling Price</span>
+              <span>${activeWorkflowBatch?.sellingPrice}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold">Labels to Print</span>
+              <span>{activeWorkflowBatch?.serials?.length || 0}</span>
+            </div>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* Step 2: Quality & Stock Confirmation Modal */}
+      <GlassModal
+        open={workflowStep === 2 && !!activeWorkflowBatch}
+        onClose={() => handleConfirmStock(false)}
+        title="Step 2: Confirm Quality & Stock"
+        footer={
+          <>
+            <GlassButton variant="secondary" onClick={() => handleConfirmStock(false)}>
+              Close / Cancel
+            </GlassButton>
+            <GlassButton onClick={() => handleConfirmStock(true)}>
+              <Check size={16} />
+              In-Stock
+            </GlassButton>
+          </>
+        }
+      >
+        <div className="space-y-4 text-primary-800">
+          <p className="text-sm">Did the barcode print correctly and clearly on the physical label?</p>
+          <div className="glass-card p-4 space-y-2 text-sm bg-accent-200/20">
+            <p>If you click <strong>In-Stock</strong>, the product status will be updated from Draft to In-Stock, and the items will become active in your inventory.</p>
+            <p className="mt-2">If you click <strong>Close / Cancel</strong>, the batch will remain as a Draft so you can try printing again later.</p>
+          </div>
         </div>
       </GlassModal>
 
