@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import api from '../api/api';
+import { posService } from '../api/apiCalls';
 
 /**
  * Hook for POS checkout session management.
@@ -21,7 +21,7 @@ export function useCheckoutSession(sessionId) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get(`/api/checkout/sessions/${sessionRef.current}/items`);
+      const data = await posService.getCartItems(sessionRef.current);
       setItems(Array.isArray(data) ? data : data.items || []);
     } catch (err) {
       setError(err.message);
@@ -35,10 +35,7 @@ export function useCheckoutSession(sessionId) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.post(
-        `/api/checkout/sessions/${sessionRef.current}/items`,
-        { serial }
-      );
+      const data = await posService.scanItem(sessionRef.current, serial);
       await fetchItems();
       return data;
     } catch (err) {
@@ -54,7 +51,7 @@ export function useCheckoutSession(sessionId) {
     setLoading(true);
     setError(null);
     try {
-      await api.delete(`/api/checkout/sessions/${sessionRef.current}/items/${serial}`);
+      await posService.removeItem(sessionRef.current, serial);
       await fetchItems();
     } catch (err) {
       setError(err.message);
@@ -69,7 +66,7 @@ export function useCheckoutSession(sessionId) {
     setCompleting(true);
     setError(null);
     try {
-      const data = await api.post(`/api/checkout/sessions/${sessionRef.current}/complete`);
+      const data = await posService.completeCheckout(sessionRef.current);
       setItems([]);
       return data;
     } catch (err) {

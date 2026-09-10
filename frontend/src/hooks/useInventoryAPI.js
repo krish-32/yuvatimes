@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import api from '../api/api';
+import { inventoryService } from '../api/apiCalls';
 
 /**
  * Hook for inventory & barcode management API calls.
@@ -28,25 +28,25 @@ export function useInventoryAPI() {
     }
   }, []);
 
-  const getProducts = useCallback(() => wrap(() => api.get('/api/inventory/products')), [wrap]);
+  const getProducts = useCallback(() => wrap(() => inventoryService.getProducts()), [wrap]);
 
   const generateBatch = useCallback(
-    (payload) => wrap(() => api.post('/api/inventory/barcode-batches', payload)),
+    (payload) => wrap(() => inventoryService.generateBatch(payload)),
     [wrap]
   );
 
   const printZpl = useCallback(
-    (serials) => wrap(() => api.post('/api/v1/barcodes/print-zpl', { serials })),
+    (serials) => wrap(() => inventoryService.printZpl(serials)),
     [wrap]
   );
 
   const commitBatch = useCallback(
-    (batchId) => wrap(() => api.post(`/api/inventory/barcode-batches/${batchId}/commit`)),
+    (batchId) => wrap(() => inventoryService.commitBatch(batchId)),
     [wrap]
   );
 
   const revertBatch = useCallback(
-    (batchId) => wrap(() => api.post(`/api/inventory/barcode-batches/${batchId}/revert`)),
+    (batchId) => wrap(() => inventoryService.revertBatch(batchId)),
     [wrap]
   );
 
