@@ -13,22 +13,13 @@ import {
 import GlassCard from '../components/GlassCard';
 import GlassButton from '../components/GlassButton';
 import GlassModal from '../components/GlassModal';
+import PosTabs from '../components/PosTabs';
 import { useCheckoutSession } from '../hooks/useCheckoutSession';
-
-function generateSessionId() {
-  const ts = Date.now().toString(36);
-  const rand = Math.random().toString(36).substring(2, 8);
-  return `pos-${ts}-${rand}`;
-}
+import { usePosStore } from '../store/usePosStore';
 
 export default function POS() {
-  const [sessionId, setSessionId] = useState(() => {
-    const existing = sessionStorage.getItem('pos_session_id');
-    if (existing) return existing;
-    const id = generateSessionId();
-    sessionStorage.setItem('pos_session_id', id);
-    return id;
-  });
+  const activeSessionId = usePosStore((state) => state.activeSessionId);
+  const addSession = usePosStore((state) => state.addSession);
 
   const {
     items,
@@ -39,7 +30,7 @@ export default function POS() {
     scanItem,
     removeItem,
     completeCheckout,
-  } = useCheckoutSession(sessionId);
+  } = useCheckoutSession(activeSessionId);
 
   const [scanInput, setScanInput] = useState('');
   const [scanFeedback, setScanFeedback] = useState(null);
@@ -112,9 +103,7 @@ export default function POS() {
   };
 
   const handleNewSession = () => {
-    const newId = generateSessionId();
-    sessionStorage.setItem('pos_session_id', newId);
-    setSessionId(newId);
+    addSession();
     setReceipt(null);
     setScanFeedback(null);
     setScanInput('');
@@ -130,22 +119,29 @@ export default function POS() {
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
+  if (!activeSessionId) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center text-primary-700/50">
+        No active session
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Tab Bar */}
+      <PosTabs />
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl lg:text-3xl font-bold text-primary-800">
-            POS / Checkout
+            Checkout
           </h1>
           <p className="text-primary-700/60 mt-1">
-            Session: <span className="font-mono text-xs">{sessionId}</span>
+            Scan items to automatically add them to the current tab
           </p>
         </div>
-        <GlassButton variant="secondary" onClick={handleNewSession}>
-          <Plus size={16} />
-          New Session
-        </GlassButton>
       </div>
 
       {/* Error banner */}
@@ -210,20 +206,7 @@ export default function POS() {
             </div>
           </GlassCard>
 
-          {/* Session info */}
-          <GlassCard>
-            <h3 className="font-display font-semibold text-primary-800 mb-3">Session Info</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-primary-700/60">Items in cart</span>
-                <span className="font-semibold text-primary-800">{items.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-primary-700/60">Session ID</span>
-                <span className="font-mono text-xs text-primary-800">{sessionId}</span>
-              </div>
-            </div>
-          </GlassCard>
+
         </div>
 
         {/* Right: Cart */}

@@ -1,42 +1,46 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { posService } from '../api/apiCalls';
+import { usePosStore } from '../store/usePosStore';
 
 /**
- * Hook for POS checkout session management.
- * Endpoints:
- *  POST   /api/checkout/sessions/{sessionId}/items   — scan/lock a barcode
- *  GET    /api/checkout/sessions/{sessionId}/items    — list staged cart items
- *  POST   /api/checkout/sessions/{sessionId}/complete — finalize sale
- *  DELETE /api/checkout/sessions/{sessionId}/items/{serial} — remove item
+ * Hook for POS checkout session management integrating with Zustand multi-session store.
  */
 export function useCheckoutSession(sessionId) {
-  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [completing, setCompleting] = useState(false);
-  const sessionRef = useRef(sessionId);
+
+  // Grab the sync actions from our store
+  const syncItems = usePosStore((state) => state.syncItems);
+  const clearSessionItems = usePosStore((state) => state.clearSessionItems);
+  
+  // Grab the items for THIS specific session
+  const items = usePosStore(
+    (state) => state.sessions.find((s) => s.id === sessionId)?.items || []
+  );
 
   const fetchItems = useCallback(async () => {
-    if (!sessionRef.current) return;
+    if (!sessionId) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await posService.getCartItems(sessionRef.current);
+      const response = await posService.getCartItems(sessionId);
       const data = response.data || response;
-      setItems(Array.isArray(data) ? data : data.items || []);
+      const fetchedItems = Array.isArray(data) ? data : data.items || [];
+      syncItems(sessionId, fetchedItems);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionId, syncItems]);
 
   const scanItem = useCallback(async (serial) => {
-    if (!sessionRef.current || !serial) return null;
+    if (!sessionId || !serial) return null;
     setLoading(true);
     setError(null);
     try {
-      const data = await posService.scanItem(sessionRef.current, serial);
+      const data = await posService.scanItem(sessionId, serial);
       await fetchItems();
       return data;
     } catch (err) {
@@ -45,14 +49,14 @@ export function useCheckoutSession(sessionId) {
     } finally {
       setLoading(false);
     }
-  }, [fetchItems]);
+  }, [sessionId, fetchItems]);
 
   const removeItem = useCallback(async (serial) => {
-    if (!sessionRef.current || !serial) return;
+    if (!sessionId || !serial) return;
     setLoading(true);
     setError(null);
     try {
-      await posService.removeItem(sessionRef.current, serial);
+      await posService.removeItem(sessionId, serial);
       await fetchItems();
     } catch (err) {
       setError(err.message);
@@ -60,15 +64,15 @@ export function useCheckoutSession(sessionId) {
     } finally {
       setLoading(false);
     }
-  }, [fetchItems]);
+  }, [sessionId, fetchItems]);
 
   const completeCheckout = useCallback(async () => {
-    if (!sessionRef.current) return null;
+    if (!sessionId) return null;
     setCompleting(true);
     setError(null);
     try {
-      const data = await posService.completeCheckout(sessionRef.current);
-      setItems([]);
+      const data = await posService.completeCheckout(sessionId);
+      clearSessionItems(sessionId);
       return data;
     } catch (err) {
       setError(err.message);
@@ -76,7 +80,7 @@ export function useCheckoutSession(sessionId) {
     } finally {
       setCompleting(false);
     }
-  }, []);
+  }, [sessionId, clearSessionItems]);
 
   return {
     items,
