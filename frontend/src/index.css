@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,12 +6,12 @@
 
 :root {
   /* Color palette as CSS variables for dynamic use */
-  --color-primary: #DC143C;
-  --color-secondary: #F75270;
-  --color-accent: #F7CAC9;
-  --color-base: #FDEBD0;
+  --color-primary: #84934A;
+  --color-secondary: #656D3F;
+  --color-accent: #492828;
+  --color-base: #ECECEC;
 
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light;
@@ -28,9 +28,9 @@ body {
   min-height: 100vh;
   background: var(--color-base);
   background-image:
-    radial-gradient(at 15% 15%, rgba(247, 202, 201, 0.4) 0%, transparent 50%),
-    radial-gradient(at 85% 20%, rgba(247, 82, 112, 0.15) 0%, transparent 50%),
-    radial-gradient(at 50% 90%, rgba(220, 20, 60, 0.08) 0%, transparent 50%);
+    radial-gradient(at 15% 15%, rgba(236, 236, 236, 0.4) 0%, transparent 50%),
+    radial-gradient(at 85% 20%, rgba(73, 40, 40, 0.15) 0%, transparent 50%),
+    radial-gradient(at 50% 90%, rgba(132, 147, 74, 0.08) 0%, transparent 50%);
   background-attachment: fixed;
 }
 
@@ -92,16 +92,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(220, 20, 60, 0.2);
+  background: rgba(132, 147, 74, 0.2);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 20, 60, 0.4);
+  background: rgba(132, 147, 74, 0.4);
 }
 
 /* Remove number input spinners */
-input[type='number']::-webkit-inner-spin-button,
-input[type='number']::-webkit-outer-spin-button {
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
