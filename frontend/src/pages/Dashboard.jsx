@@ -170,33 +170,6 @@ export default function Dashboard() {
           </GlassCard>
         </Link>
       </div>
-
-      {/* Low stock alert */}
-      {lowStock.length > 0 && (
-        <GlassCard>
-          <div className="flex items-center gap-2 mb-4">
-            <AlertCircle className="text-secondary-600" size={20} />
-            <h3 className="font-display font-semibold text-primary-800">
-              Low Stock Alert
-            </h3>
-          </div>
-          <div className="space-y-2">
-            {lowStock.map((p, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between rounded-xl bg-white/30 px-4 py-2.5"
-              >
-                <span className="text-sm font-medium text-primary-800">
-                  {p.brand} {p.model}
-                </span>
-                <span className="text-sm font-bold text-secondary-600">
-                  {p.availableUnits || p.available || 0} left
-                </span>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-      )}
     </div>
   );
 }
