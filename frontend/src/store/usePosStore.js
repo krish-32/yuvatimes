@@ -4,6 +4,7 @@ import { create } from 'zustand';
  * @typedef {Object} PosSession
  * @property {string} id - Unique identifier for the checkout session.
  * @property {Array} items - Array of items scanned into this session.
+ * @property {number} discount - The flat discount applied in Rupees.
  * @property {Object|null} clientDetails - Optional customer details for the session.
  */
 
@@ -24,6 +25,7 @@ function generateSessionId() {
 const createNewSession = () => ({
   id: generateSessionId(),
   items: [],
+  discount: 0,
   clientDetails: null,
 });
 
@@ -100,13 +102,25 @@ export const usePosStore = create((set, get) => {
     })),
     
     /**
-     * Clears all items from a specific session (e.g., after completing a checkout).
+     * Sets the flat discount amount for a specific session.
+     * @param {string} sessionId - The ID of the session.
+     * @param {number} discount - The discount in Rupees.
+     */
+    setDiscount: (sessionId, discount) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === sessionId ? { ...s, discount } : s
+      ),
+    })),
+    
+    /**
+     * Clears all items and resets discount from a specific session (e.g., after completing a checkout).
      * @param {string} sessionId - The ID of the session.
      */
     clearSessionItems: (sessionId) =>
     set((state) => ({
       sessions: state.sessions.map((s) =>
-        s.id === sessionId ? { ...s, items: [] } : s
+        s.id === sessionId ? { ...s, items: [], discount: 0 } : s
       ),
     })),
   };

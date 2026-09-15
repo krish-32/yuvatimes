@@ -15,6 +15,12 @@ import { usePosStore } from '../store/usePosStore';
 export default function POS() {
   const activeSessionId = usePosStore((state) => state.activeSessionId);
   const addSession = usePosStore((state) => state.addSession);
+  const setDiscount = usePosStore((state) => state.setDiscount);
+  
+  const activeSession = usePosStore((state) => 
+    state.sessions.find(s => s.id === state.activeSessionId)
+  );
+  const discount = activeSession?.discount || 0;
 
   const {
     items,
@@ -53,18 +59,16 @@ export default function POS() {
   };
 
   // Performance Optimization: Cache these calculations
-  const { subtotal, tax, total } = useMemo(() => {
+  const { subtotal, total } = useMemo(() => {
     const calculatedSubtotal = items.reduce(
       (sum, item) => sum + (item.sellingPrice || item.price || 0),
       0
     );
-    const calculatedTax = calculatedSubtotal * 0.08; // 8% tax rate
     return {
       subtotal: calculatedSubtotal,
-      tax: calculatedTax,
-      total: calculatedSubtotal + calculatedTax,
+      total: Math.max(0, calculatedSubtotal - discount),
     };
-  }, [items]);
+  }, [items, discount]);
 
   if (!activeSessionId) {
     return (
@@ -118,9 +122,16 @@ export default function POS() {
                 <span>Subtotal</span>
                 <span>₹{subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-primary-700/70">
-                <span>Tax (8%)</span>
-                <span>₹{tax.toFixed(2)}</span>
+              <div className="flex justify-between items-center text-primary-700/70">
+                <span>Offer / Discount (₹)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={discount === 0 ? '' : discount}
+                  onChange={(e) => setDiscount(activeSessionId, Number(e.target.value) || 0)}
+                  className="glass-input w-24 px-3 py-1.5 text-right font-mono text-sm bg-white/40"
+                  placeholder="0"
+                />
               </div>
               
               <div className="pt-3 border-t border-primary-900/10 flex justify-between items-end">
@@ -172,8 +183,8 @@ export default function POS() {
               <span>₹{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-primary-700/70">
-              <span>Tax (8%)</span>
-              <span>₹{tax.toFixed(2)}</span>
+              <span>Offer / Discount</span>
+              <span className="text-secondary-600">-₹{discount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-display font-bold text-primary-800 text-base pt-2 border-t border-white/20">
               <span>Total Due</span>
