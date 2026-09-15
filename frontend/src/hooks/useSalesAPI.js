@@ -12,7 +12,6 @@ export function useInfiniteSales() {
       }
       return undefined; // Stop fetching
     },
-    staleTime: 5 * 60 * 1000,
   });
 }
 
