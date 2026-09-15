@@ -22,6 +22,7 @@ import {
   useCommitBatch, 
   useRevertBatch 
 } from "../hooks/useInventoryAPI";
+import { useWebUSBPrinter } from "../hooks/useWebUSBPrinter";
 
 export default function Inventory() {
   const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
@@ -31,6 +32,7 @@ export default function Inventory() {
   const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
   const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
+  const { isPrinting: isUsbPrinting, printerError, printZplWithUsb } = useWebUSBPrinter();
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
@@ -117,47 +119,12 @@ export default function Inventory() {
       const zplData = response.data?.zpl || response.zpl || response;
 
       // 2. Send the ZPL code to the local printer using WebUSB
-      try {
-        const device = await navigator.usb.requestDevice({
-          filters: [] // Let the user select their specific connected printer
-        });
-
-        await device.open();
-
-        if (device.configuration === null) {
-          await device.selectConfiguration(1);
-        }
-
-        await device.claimInterface(0);
-
-        // Find the outbound endpoint to send data to
-        let outEndpoint;
-        const endpoints = device.configuration.interfaces[0].alternates[0].endpoints;
-        for (const endpoint of endpoints) {
-          if (endpoint.direction === 'out') {
-            outEndpoint = endpoint.endpointNumber;
-            break;
-          }
-        }
-
-        if (outEndpoint === undefined) {
-          throw new Error("Could not find an outbound port on this USB device.");
-        }
-
-        const encoder = new TextEncoder();
-        const zplBytes = encoder.encode(zplData);
-
-        await device.transferOut(outEndpoint, zplBytes);
-        await device.close();
-      } catch (printErr) {
-        console.error("USB print failed:", printErr);
-        throw new Error("Could not communicate with printer: " + printErr.message);
-      }
+      await printZplWithUsb(zplData);
 
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
     } catch (err) {
-      setFormError(`Failed to print: ${err.message}`);
+      setFormError(`Failed to print: ${err.message || printerError}`);
     }
   };
 
