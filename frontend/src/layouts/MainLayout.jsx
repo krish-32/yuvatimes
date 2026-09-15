@@ -1,11 +1,18 @@
-import { useState, useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Package, ScanLine, Menu, X, Watch } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { NavLink, Outlet } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Package,
+  ScanLine,
+  Menu,
+  X,
+  Watch,
+} from "lucide-react";
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/inventory', label: 'Inventory & Barcodes', icon: Package },
-  { to: '/pos', label: 'POS / Checkout', icon: ScanLine },
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/inventory", label: "Inventory & Barcodes", icon: Package },
+  { to: "/pos", label: "POS / Checkout", icon: ScanLine },
 ];
 
 export default function MainLayout() {
@@ -15,8 +22,8 @@ export default function MainLayout() {
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   return (
@@ -33,7 +40,7 @@ export default function MainLayout() {
       <aside
         className={`fixed lg:sticky top-0 left-0 z-40 h-screen w-72 shrink-0 glass-nav rounded-none lg:rounded-r-3xl border-l-0 border-y-0 border-r border-white/40
           transition-transform duration-300 ease-out
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="flex h-full flex-col p-5">
           {/* Logo */}
@@ -59,9 +66,10 @@ export default function MainLayout() {
                 onClick={() => isMobile && setSidebarOpen(false)}
                 className={({ isActive }) =>
                   `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
-                  ${isActive
-                    ? 'bg-primary-500/90 text-white shadow-glass-sm'
-                    : 'text-primary-800/70 hover:bg-white/40 hover:text-primary-800'
+                  ${
+                    isActive
+                      ? "bg-primary-500/90 text-white shadow-glass-sm"
+                      : "text-primary-800/70 hover:bg-white/40 hover:text-primary-800"
                   }`
                 }
               >
@@ -70,15 +78,6 @@ export default function MainLayout() {
               </NavLink>
             ))}
           </nav>
-
-          {/* Footer */}
-          <div className="glass-card px-4 py-3 mt-4">
-            <p className="text-xs text-primary-700/60">Backend Status</p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse-soft" />
-              <span className="text-sm font-medium text-primary-800">Connected</span>
-            </div>
-          </div>
         </div>
       </aside>
 
@@ -102,7 +101,9 @@ export default function MainLayout() {
               <div className="h-7 w-7 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-bold">
                 AD
               </div>
-              <span className="text-sm font-medium text-primary-800 hidden sm:block">Admin</span>
+              <span className="text-sm font-medium text-primary-800 hidden sm:block">
+                Admin
+              </span>
             </div>
           </div>
         </header>
