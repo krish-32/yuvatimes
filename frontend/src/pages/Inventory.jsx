@@ -1,0 +1,527 @@
+import { useState } from "react";
+import {
+  Package,
+  Plus,
+  Printer,
+  Check,
+  X,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+  Tag,
+} from "lucide-react";
+import GlassCard from "../components/GlassCard";
+import GlassInput from "../components/GlassInput";
+import GlassButton from "../components/GlassButton";
+import GlassModal from "../components/GlassModal";
+import { 
+  useProducts, 
+  useDraftBatches, 
+  useGenerateBatch, 
+  usePrintZpl, 
+  useCommitBatch, 
+  useRevertBatch 
+} from "../hooks/useInventoryAPI";
+import { useWebUSBPrinter } from "../hooks/useWebUSBPrinter";
+
+export default function Inventory() {
+  const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
+  const { data: batches = [], isLoading: loadingBatches, error: batchesError, refetch: refetchBatches } = useDraftBatches();
+
+  const { mutateAsync: generateBatch, isPending: isGenerating } = useGenerateBatch();
+  const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
+  const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
+  const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
+  const { isPrinting: isUsbPrinting, printerError, printZplWithUsb } = useWebUSBPrinter();
+
+  const [showBatchForm, setShowBatchForm] = useState(false);
+  const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
+  const [workflowStep, setWorkflowStep] = useState(0);
+  const [actionBatchId, setActionBatchId] = useState(null);
+
+  const [batchForm, setBatchForm] = useState({
+    productType: "watch",
+    brand: "",
+    model: "",
+    purchasePrice: "",
+    sellingPrice: "",
+    quantity: 1,
+  });
+  const [formError, setFormError] = useState(null);
+
+  const handleRefresh = () => {
+    refetchProducts();
+    refetchBatches();
+  };
+
+  const handleGenerateBatch = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+    if (!batchForm.brand || !batchForm.model) {
+      setFormError("Brand and model are required");
+      return;
+    }
+    try {
+      const payload = {
+        productType: batchForm.productType,
+        brand: batchForm.brand,
+        model: batchForm.model,
+        purchasePrice: parseFloat(batchForm.purchasePrice) || 0,
+        sellingPrice: parseFloat(batchForm.sellingPrice) || 0,
+        quantity: parseInt(batchForm.quantity, 10) || 1,
+      };
+      const response = await generateBatch(payload);
+      const data = response.data || response;
+      console.log(data);
+
+      const rawSerials = data.serials || data.barcodes || [];
+      const serialList = rawSerials.map(b => typeof b === 'string' ? b : (b.serial || b.barcodeValue));
+
+      const batch = {
+        batchId: data.batch_id || data.batchId || data.id,
+        serials: serialList,
+        ...payload,
+        status: "DRAFT",
+      };
+      
+      // Auto-trigger the 2-step workflow immediately
+      setActiveWorkflowBatch(batch);
+      setWorkflowStep(1);
+      
+      setShowBatchForm(false);
+      setBatchForm({
+        productType: "watch",
+        brand: "",
+        model: "",
+        purchasePrice: "",
+        sellingPrice: "",
+        quantity: 1,
+      });
+
+      // UI instantly refreshes because useGenerateBatch invalidates the draftBatches query!
+    } catch (err) {
+      setFormError(err.message);
+    }
+  };
+
+  const handleSilentPrint = async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
+    try {
+      const payload = {
+        brand: activeWorkflowBatch.brand,
+        model: activeWorkflowBatch.model,
+        price: activeWorkflowBatch.sellingPrice ? activeWorkflowBatch.sellingPrice.toString() : "0",
+        serials: activeWorkflowBatch.serials
+      };
+      // 1. Get the ZPL code from the backend
+      const response = await printZpl(payload);
+      const zplData = response.data?.zpl || response.zpl || response;
+
+      // 2. Send the ZPL code to the local printer using WebUSB
+      await printZplWithUsb(zplData);
+
+      // Automatically transition to step 2 after successful print dispatch
+      setWorkflowStep(2);
+    } catch (err) {
+      setFormError(`Failed to print: ${err.message || printerError}`);
+    }
+  };
+
+  const handleConfirmStock = async (confirm) => {
+    if (!activeWorkflowBatch) return;
+    if (confirm) {
+      try {
+        await commitBatch(activeWorkflowBatch.batchId);
+        // UI instantly refreshes because useCommitBatch invalidates queries!
+      } catch (err) {
+        setFormError(err.message);
+        return;
+      }
+    }
+    // Close the workflow modal
+    setActiveWorkflowBatch(null);
+    setWorkflowStep(0);
+  };
+
+  const handleRevert = async (batch) => {
+    setActionBatchId(batch.batchId);
+    try {
+      await revertBatch(batch.batchId);
+      // UI instantly refreshes because useRevertBatch invalidates queries!
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setActionBatchId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl lg:text-3xl font-bold text-primary-800">
+            Inventory & Barcode Management
+          </h1>
+          <p className="text-primary-700/60 mt-1">
+            View catalog, generate barcode batches, and manage stock
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <GlassButton
+            variant="secondary"
+            onClick={handleRefresh}
+            isLoading={loadingProducts || loadingBatches}
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </GlassButton>
+          <GlassButton onClick={() => setShowBatchForm(true)}>
+            <Plus size={16} />
+            Generate Batch
+          </GlassButton>
+        </div>
+      </div>
+
+      {/* Error banner */}
+      {(productsError || batchesError || formError) && (
+        <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-secondary-600 mt-0.5" size={20} />
+            <div>
+              <h3 className="font-semibold text-secondary-800">
+                Error Occurred
+              </h3>
+              <p className="text-sm text-secondary-700">
+                {formError || productsError?.message || batchesError?.message}
+              </p>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Product catalog table */}
+      <GlassCard className="!p-0 overflow-hidden">
+        <div className="flex items-center gap-2 px-6 py-4 border-b border-white/30">
+          <Package className="text-primary-600" size={20} />
+          <h2 className="font-display font-semibold text-primary-800">
+            Product Catalog
+          </h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/30">
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Type
+                </th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Brand
+                </th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Model
+                </th>
+                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Purchase
+                </th>
+                <th className="text-right text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Selling
+                </th>
+                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Total
+                </th>
+                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Available
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingProducts ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-8 text-center">
+                    <Loader2 className="animate-spin text-primary-500 mx-auto mb-2" size={24} />
+                    <p className="text-sm text-primary-700/60">Loading catalog...</p>
+                  </td>
+                </tr>
+              ) : products.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="text-center py-12 text-primary-700/50"
+                  >
+                    No products found. Generate a batch to get started.
+                  </td>
+                </tr>
+              ) : (
+                products.map((p, i) => (
+                  <tr
+                    key={i}
+                    className="border-b border-white/20 hover:bg-white/20 transition-colors"
+                  >
+                    <td className="px-6 py-3 text-sm text-primary-800">
+                      {p.productType || p.type || "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm font-medium text-primary-800">
+                      {p.brand || "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-primary-700">
+                      {p.model || "—"}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right text-primary-700">
+                      ₹{(p.purchasePrice || 0).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right font-semibold text-primary-800">
+                      ₹{(p.sellingPrice || 0).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-center text-primary-700">
+                      {p.totalUnits || 0}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-center">
+                      <span
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium
+                          ${
+                            (p.availableUnits || 0) <= 5
+                              ? "bg-secondary-500/20 text-secondary-700"
+                              : "bg-green-500/20 text-green-700"
+                          }`}
+                      >
+                        {p.availableUnits || 0}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </GlassCard>
+
+      {/* Batch staging area */}
+      {batches.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="font-display text-lg font-semibold text-primary-800 flex items-center gap-2">
+            <Tag className="text-primary-600" size={20} />
+            Batch Staging Area (Drafts)
+          </h2>
+          {batches.map((batch) => (
+            <GlassCard key={batch.batchId}>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="font-display font-semibold text-primary-800">
+                      {batch.brand} {batch.model}
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-medium
+                        ${
+                          batch.status === "IN_STOCK"
+                            ? "bg-green-500/20 text-green-700"
+                            : "bg-accent-200/40 text-primary-700"
+                        }`}
+                    >
+                      {batch.status}
+                    </span>
+                    <span className="text-sm text-primary-700/60">
+                      {batch.serials.length} barcodes
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {batch.serials.slice(0, 8).map((s, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-1 rounded-lg bg-white/40 text-xs font-mono text-primary-800 border border-white/50"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                    {batch.serials.length > 8 && (
+                      <span className="px-2 py-1 text-xs text-primary-700/60">
+                        +{batch.serials.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {batch.status === "DRAFT" && (
+                  <div className="flex items-center gap-2">
+                    <GlassButton
+                      variant="danger"
+                      onClick={() => handleRevert(batch)}
+                      isLoading={isReverting && actionBatchId === batch.batchId}
+                    >
+                      Discard
+                    </GlassButton>
+                    <GlassButton 
+                      onClick={() => {
+                        setActiveWorkflowBatch(batch);
+                        setWorkflowStep(1);
+                      }}
+                      isLoading={isPrinting || isCommitting}
+                    >
+                      Print & Receive
+                    </GlassButton>
+                  </div>
+                )}
+                {batch.status === "IN_STOCK" && (
+                  <div className="flex items-center gap-2 text-green-600 font-medium text-sm">
+                    <Check size={18} />
+                    Committed to stock
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      {/* Step 1: Draft Review & Print Modal */}
+      <GlassModal
+        open={workflowStep === 1 && !!activeWorkflowBatch}
+        onClose={() => setWorkflowStep(0)}
+        title="Step 1: Print Barcode"
+        footer={
+          <>
+            <GlassButton variant="secondary" onClick={() => setWorkflowStep(0)}>
+              Cancel
+            </GlassButton>
+            <GlassButton onClick={handleSilentPrint} isLoading={isPrinting}>
+              <Printer size={16} />
+              Print Barcode
+            </GlassButton>
+          </>
+        }
+      >
+        <div className="space-y-4 text-primary-800">
+          <p className="text-sm">Please review the details for this draft batch before printing.</p>
+          <div className="glass-card p-4 space-y-2">
+            <div className="flex justify-between border-b border-white/20 pb-2">
+              <span className="font-semibold">Brand / Model</span>
+              <span>{activeWorkflowBatch?.brand} {activeWorkflowBatch?.model}</span>
+            </div>
+            <div className="flex justify-between border-b border-white/20 pb-2">
+              <span className="font-semibold">Selling Price</span>
+              <span>₹{activeWorkflowBatch?.sellingPrice}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold">Labels to Print</span>
+              <span>{activeWorkflowBatch?.serials?.length || 0}</span>
+            </div>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* Step 2: Quality & Stock Confirmation Modal */}
+      <GlassModal
+        open={workflowStep === 2 && !!activeWorkflowBatch}
+        onClose={() => handleConfirmStock(false)}
+        title="Step 2: Confirm Quality & Stock"
+        footer={
+          <>
+            <GlassButton variant="secondary" onClick={() => handleConfirmStock(false)}>
+              Close / Cancel
+            </GlassButton>
+            <GlassButton onClick={() => handleConfirmStock(true)} isLoading={isCommitting}>
+              <Check size={16} />
+              In-Stock
+            </GlassButton>
+          </>
+        }
+      >
+        <div className="space-y-4 text-primary-800">
+          <p className="text-sm">Did the barcode print correctly and clearly on the physical label?</p>
+          <div className="glass-card p-4 space-y-2 text-sm bg-accent-200/20">
+            <p>If you click <strong>In-Stock</strong>, the product status will be updated from Draft to In-Stock, and the items will become active in your inventory.</p>
+            <p className="mt-2">If you click <strong>Close / Cancel</strong>, the batch will remain as a Draft so you can try printing again later.</p>
+          </div>
+        </div>
+      </GlassModal>
+
+      {/* Generate Batch Modal */}
+      <GlassModal
+        open={showBatchForm}
+        onClose={() => setShowBatchForm(false)}
+        title="Generate Barcode Batch"
+        footer={
+          <>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setShowBatchForm(false)}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton onClick={handleGenerateBatch} isLoading={isGenerating}>
+              <Plus size={16} />
+              Generate
+            </GlassButton>
+          </>
+        }
+      >
+        <form onSubmit={handleGenerateBatch} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <GlassInput
+              label="Product Type"
+              value={batchForm.productType}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, productType: e.target.value })
+              }
+              placeholder="watch"
+            />
+            <GlassInput
+              label="Quantity"
+              type="number"
+              min="1"
+              value={batchForm.quantity}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, quantity: e.target.value })
+              }
+            />
+            <GlassInput
+              label="Brand"
+              value={batchForm.brand}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, brand: e.target.value })
+              }
+              placeholder="e.g. Rolex"
+              required
+            />
+            <GlassInput
+              label="Model"
+              value={batchForm.model}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, model: e.target.value })
+              }
+              placeholder="e.g. Submariner"
+              required
+            />
+            <GlassInput
+              label="Purchase Price (₹)"
+              type="number"
+              step="0.01"
+              min="0"
+              value={batchForm.purchasePrice}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, purchasePrice: e.target.value })
+              }
+              placeholder="0.00"
+            />
+            <GlassInput
+              label="Selling Price (₹)"
+              type="number"
+              step="0.01"
+              min="0"
+              value={batchForm.sellingPrice}
+              onChange={(e) =>
+                setBatchForm({ ...batchForm, sellingPrice: e.target.value })
+              }
+              placeholder="0.00"
+            />
+          </div>
+          <p className="text-xs text-primary-700/50">
+            This will generate {batchForm.quantity} unique 8-character DRAFT
+            UUIDs for barcode labels.
+          </p>
+        </form>
+      </GlassModal>
+    </div>
+  );
+}
