@@ -129,16 +129,42 @@ export default function Inventory() {
       const response = await printZpl(payload);
       const zplData = response.data?.zpl || response.zpl || response;
 
-      // 2. Send the ZPL code to the local printer (e.g. Zebra Browser Print)
+      // 2. Send the ZPL code to the local printer using WebUSB
       try {
-        await fetch('http://127.0.0.1:9101/write', {
-          method: 'POST',
-          body: zplData,
-          mode: 'no-cors' // Prevent CORS blocking for local utility
+        const device = await navigator.usb.requestDevice({
+          filters: [] // Let the user select their specific connected printer
         });
+
+        await device.open();
+
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+
+        await device.claimInterface(0);
+
+        // Find the outbound endpoint to send data to
+        let outEndpoint;
+        const endpoints = device.configuration.interfaces[0].alternates[0].endpoints;
+        for (const endpoint of endpoints) {
+          if (endpoint.direction === 'out') {
+            outEndpoint = endpoint.endpointNumber;
+            break;
+          }
+        }
+
+        if (outEndpoint === undefined) {
+          throw new Error("Could not find an outbound port on this USB device.");
+        }
+
+        const encoder = new TextEncoder();
+        const zplBytes = encoder.encode(zplData);
+
+        await device.transferOut(outEndpoint, zplBytes);
+        await device.close();
       } catch (printErr) {
-        console.error("Local print failed:", printErr);
-        throw new Error("Could not communicate with local printer. Ensure Zebra Browser Print is running.");
+        console.error("USB print failed:", printErr);
+        throw new Error("Could not communicate with printer: " + printErr.message);
       }
 
       // Automatically transition to step 2 after successful print dispatch
@@ -292,10 +318,10 @@ export default function Inventory() {
                       {p.model || "—"}
                     </td>
                     <td className="px-6 py-3 text-sm text-right text-primary-700">
-                      ${(p.purchasePrice || 0).toFixed(2)}
+                      ₹{(p.purchasePrice || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-right font-semibold text-primary-800">
-                      ${(p.sellingPrice || 0).toFixed(2)}
+                      ₹{(p.sellingPrice || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-3 text-sm text-center text-primary-700">
                       {p.totalUnits || 0}
@@ -425,7 +451,7 @@ export default function Inventory() {
             </div>
             <div className="flex justify-between border-b border-white/20 pb-2">
               <span className="font-semibold">Selling Price</span>
-              <span>${activeWorkflowBatch?.sellingPrice}</span>
+              <span>₹{activeWorkflowBatch?.sellingPrice}</span>
             </div>
             <div className="flex justify-between">
               <span className="font-semibold">Labels to Print</span>
@@ -519,7 +545,7 @@ export default function Inventory() {
               required
             />
             <GlassInput
-              label="Purchase Price ($)"
+              label="Purchase Price (₹)"
               type="number"
               step="0.01"
               min="0"
@@ -530,7 +556,7 @@ export default function Inventory() {
               placeholder="0.00"
             />
             <GlassInput
-              label="Selling Price ($)"
+              label="Selling Price (₹)"
               type="number"
               step="0.01"
               min="0"

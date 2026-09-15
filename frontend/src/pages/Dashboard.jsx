@@ -72,7 +72,7 @@ export default function Dashboard() {
     },
     {
       label: "Inventory Value",
-      value: `$${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+      value: `₹${totalValue.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
       icon: DollarSign,
       color: "text-primary-700",
       bg: "bg-accent-200/40",

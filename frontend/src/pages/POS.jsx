@@ -266,7 +266,7 @@ export default function POS() {
                       </div>
                       <div className="flex items-center gap-3 ml-3">
                         <span className="text-sm font-semibold text-primary-800">
-                          ${(item.sellingPrice || item.price || 0).toFixed(2)}
+                          ₹{(item.sellingPrice || item.price || 0).toFixed(2)}
                         </span>
                         <button
                           onClick={() => handleRemove(item.serial || item.barcode)}
@@ -287,15 +287,15 @@ export default function POS() {
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between text-primary-700/70">
                     <span>Subtotal</span>
-                    <span>${subtotal.toFixed(2)}</span>
+                    <span>₹{subtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-primary-700/70">
                     <span>Tax (8%)</span>
-                    <span>${tax.toFixed(2)}</span>
+                    <span>₹{tax.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between font-display font-bold text-primary-800 text-base pt-1.5 border-t border-white/20">
                     <span>Total</span>
-                    <span>${total.toFixed(2)}</span>
+                    <span>₹{total.toFixed(2)}</span>
                   </div>
                 </div>
                 <GlassButton
@@ -304,7 +304,7 @@ export default function POS() {
                   disabled={completing}
                 >
                   <Receipt size={18} />
-                  Complete Checkout — ${total.toFixed(2)}
+                  Complete Checkout — ₹{total.toFixed(2)}
                 </GlassButton>
               </div>
             )}
@@ -337,15 +337,15 @@ export default function POS() {
           <div className="glass-card p-4 space-y-2">
             <div className="flex justify-between text-sm text-primary-700/70">
               <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>₹{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-primary-700/70">
               <span>Tax (8%)</span>
-              <span>${tax.toFixed(2)}</span>
+              <span>₹{tax.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-display font-bold text-primary-800 text-base pt-2 border-t border-white/20">
               <span>Total Due</span>
-              <span>${total.toFixed(2)}</span>
+              <span>₹{total.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -389,7 +389,7 @@ export default function POS() {
               {receipt.total !== undefined && (
                 <div className="flex justify-between font-semibold">
                   <span className="text-primary-700/60">Total</span>
-                  <span className="text-primary-800">${Number(receipt.total).toFixed(2)}</span>
+                  <span className="text-primary-800">₹{Number(receipt.total).toFixed(2)}</span>
                 </div>
               )}
               {receipt.items_sold !== undefined && (
