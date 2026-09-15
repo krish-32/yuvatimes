@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -241,4 +243,71 @@ func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
+}
+
+// GetSales handles paginated retrieval of sold records
+func (h *Handler) GetSales(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 50
+	}
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	records, err := h.Repo.GetSalesRecords(r.Context(), limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	nextOffset := offset + limit
+	var hasNextPage bool
+	if len(records) == limit {
+		hasNextPage = true
+	} else {
+		hasNextPage = false
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"data": records,
+		"nextOffset": nextOffset,
+		"hasNextPage": hasNextPage,
+	})
+}
+
+// ExportSales generates a CSV of all sales and permanently deletes them from the DB
+func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
+	records, err := h.Repo.ExportAndPurgeSales(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment;filename=sales_export.csv")
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	writer.Write([]string{"Serial", "Batch ID", "Status", "Session ID", "Sold At", "Product Type", "Brand", "Model", "Purchase Price", "Selling Price"})
+
+	for _, rec := range records {
+		writer.Write([]string{
+			fmt.Sprintf("%v", rec["serial"]),
+			fmt.Sprintf("%v", rec["batchId"]),
+			fmt.Sprintf("%v", rec["status"]),
+			fmt.Sprintf("%v", rec["sessionId"]),
+			fmt.Sprintf("%v", rec["soldAt"]),
+			fmt.Sprintf("%v", rec["productType"]),
+			fmt.Sprintf("%v", rec["brand"]),
+			fmt.Sprintf("%v", rec["model"]),
+			fmt.Sprintf("%v", rec["purchasePrice"]),
+			fmt.Sprintf("%v", rec["sellingPrice"]),
+		})
+	}
 }

@@ -366,7 +366,8 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (ma
 	}
 
 	for _, serial := range itemIDs {
-		res, err := tx.ExecContext(ctx, "DELETE FROM barcodes WHERE serial = ? AND status = 'STAGED'", serial)
+		// Soft delete: Mark the item as SOLD instead of completely removing it
+		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD' WHERE serial = ? AND status = 'STAGED'", serial)
 		if err != nil {
 			return nil, err
 		}
@@ -381,4 +382,123 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (ma
 	}
 
 	return map[string]interface{}{"orderId": sessionID, "invoiceNumber": sessionID, "status": "COMPLETED", "inventoryItemsSold": len(itemIDs), "receiptPrintJobId": "receipt-print-job-id"}, nil
+}
+
+// GetSalesRecords fetches paginated sold items joining products and barcodes.
+func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			b.serial, b.batch_id, b.status, b.checkout_session_id, b.created_at as sold_at,
+			p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
+		FROM barcodes b
+		JOIN products p ON b.product_id = p.id
+		WHERE b.status = 'SOLD'
+		ORDER BY b.created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	rows, err := r.DB.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []map[string]interface{}
+	for rows.Next() {
+		var serial, batchID, status, sessionID, soldAt, productType, brand, model string
+		var pPrice, sPrice float64
+		var rawSessionID sql.NullString
+		if err := rows.Scan(&serial, &batchID, &status, &rawSessionID, &soldAt, &productType, &brand, &model, &pPrice, &sPrice); err != nil {
+			return nil, err
+		}
+		if rawSessionID.Valid {
+			sessionID = rawSessionID.String
+		}
+		
+		record := map[string]interface{}{
+			"serial": serial,
+			"batchId": batchID,
+			"status": status,
+			"sessionId": sessionID,
+			"soldAt": soldAt,
+			"productType": productType,
+			"brand": brand,
+			"model": model,
+			"purchasePrice": pPrice,
+			"sellingPrice": sPrice,
+		}
+		records = append(records, record)
+	}
+	if records == nil {
+		records = make([]map[string]interface{}, 0)
+	}
+	return records, nil
+}
+
+// ExportAndPurgeSales fetches all sold records and deletes them permanently in a single transaction.
+func (r *Repository) ExportAndPurgeSales(ctx context.Context) ([]map[string]interface{}, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 1. Fetch all SOLD records
+	query := `
+		SELECT 
+			b.serial, b.batch_id, b.status, b.checkout_session_id, b.created_at as sold_at,
+			p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
+		FROM barcodes b
+		JOIN products p ON b.product_id = p.id
+		WHERE b.status = 'SOLD'
+		ORDER BY b.created_at DESC
+	`
+	rows, err := tx.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	var records []map[string]interface{}
+	for rows.Next() {
+		var serial, batchID, status, sessionID, soldAt, productType, brand, model string
+		var pPrice, sPrice float64
+		var rawSessionID sql.NullString
+		if err := rows.Scan(&serial, &batchID, &status, &rawSessionID, &soldAt, &productType, &brand, &model, &pPrice, &sPrice); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if rawSessionID.Valid {
+			sessionID = rawSessionID.String
+		}
+		
+		record := map[string]interface{}{
+			"serial": serial,
+			"batchId": batchID,
+			"status": status,
+			"sessionId": sessionID,
+			"soldAt": soldAt,
+			"productType": productType,
+			"brand": brand,
+			"model": model,
+			"purchasePrice": pPrice,
+			"sellingPrice": sPrice,
+		}
+		records = append(records, record)
+	}
+	rows.Close()
+
+	if len(records) > 0 {
+		// 2. Permanently delete all SOLD records
+		_, err = tx.ExecContext(ctx, "DELETE FROM barcodes WHERE status = 'SOLD'")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	if records == nil {
+		records = make([]map[string]interface{}, 0)
+	}
+	return records, nil
 }

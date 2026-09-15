@@ -7,12 +7,14 @@ import {
   Menu,
   X,
   Watch,
+  History,
 } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/inventory", label: "Inventory & Barcodes", icon: Package },
   { to: "/pos", label: "POS / Checkout", icon: ScanLine },
+  { to: "/sales", label: "Sales History", icon: History },
 ];
 
 export default function MainLayout() {

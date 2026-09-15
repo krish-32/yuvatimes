@@ -38,11 +38,18 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Get("/barcodes/{barcodeValue}", h.SearchBarcode)
 		})
 
+		// POS Checkout
 		r.Route("/checkout/sessions/{sessionId}", func(r chi.Router) {
 			r.Get("/items", h.GetCartItems)
 			r.Post("/items", h.StageCartItem)
 			r.Delete("/items/{serial}", h.UnstageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
+		})
+		
+		// Sales Records
+		r.Route("/sales", func(r chi.Router) {
+			r.Get("/", h.GetSales)
+			r.Post("/export", h.ExportSales)
 		})
 
 		r.Route("/v1/barcodes", func(r chi.Router) {
