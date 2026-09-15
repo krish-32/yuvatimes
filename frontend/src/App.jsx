@@ -4,17 +4,24 @@ import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import POS from './pages/POS';
 
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { queryClient } from './lib/queryClient';
+
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<MainLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/inventory" element={<Inventory />} />
-          <Route path="/pos" element={<POS />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/inventory" element={<Inventory />} />
+            <Route path="/pos" element={<POS />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }
 

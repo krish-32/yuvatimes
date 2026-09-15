@@ -1,71 +1,78 @@
-import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryService } from '../api/apiCalls';
+import { inventoryKeys } from '../lib/queryClient';
 
 /**
- * Hook for inventory & barcode management API calls.
- * Endpoints:
- *  GET  /api/inventory/products
- *  POST /api/inventory/barcode-batches
- *  POST /api/v1/barcodes/print-zpl
- *  POST /api/inventory/barcode-batches/{batchId}/commit
- *  POST /api/inventory/barcode-batches/{batchId}/revert
+ * Custom hooks leveraging TanStack Query for Inventory & Barcode APIs
  */
-export function useInventoryAPI() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
-  const wrap = useCallback(async (fn) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fn();
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+export function useProducts() {
+  return useQuery({
+    queryKey: inventoryKeys.products(),
+    queryFn: async () => {
+      const response = await inventoryService.getProducts();
+      return Array.isArray(response) ? response : response.data || [];
+    },
+  });
+}
 
-  const getProducts = useCallback(
-    () => wrap(() => inventoryService.getProducts()),
-    [wrap]
-  );
+export function useDraftBatches() {
+  return useQuery({
+    queryKey: inventoryKeys.draftBatches(),
+    queryFn: async () => {
+      const response = await inventoryService.getDraftBatches();
+      return Array.isArray(response) ? response : response.data || [];
+    },
+  });
+}
 
-  const getDraftBatches = useCallback(
-    () => wrap(() => inventoryService.getDraftBatches()),
-    [wrap]
-  );
+export function useGenerateBatch() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (payload) => {
+      return await inventoryService.generateBatch(payload);
+    },
+    onSuccess: () => {
+      // Invalidate drafts so the UI instantly shows the new draft batch
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.draftBatches() });
+    },
+  });
+}
 
-  const generateBatch = useCallback(
-    (payload) => wrap(() => inventoryService.generateBatch(payload)),
-    [wrap]
-  );
+export function usePrintZpl() {
+  return useMutation({
+    mutationFn: async (payload) => {
+      return await inventoryService.printZpl(payload);
+    },
+  });
+}
 
-  const printZpl = useCallback(
-    (payload) => wrap(() => inventoryService.printZpl(payload)),
-    [wrap]
-  );
+export function useCommitBatch() {
+  const queryClient = useQueryClient();
 
-  const commitBatch = useCallback(
-    (batchId) => wrap(() => inventoryService.commitBatch(batchId)),
-    [wrap]
-  );
+  return useMutation({
+    mutationFn: async (batchId) => {
+      return await inventoryService.commitBatch(batchId);
+    },
+    onSuccess: () => {
+      // Invalidate both lists since stock moved from Draft -> In-Stock
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.draftBatches() });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+    },
+  });
+}
 
-  const revertBatch = useCallback(
-    (batchId) => wrap(() => inventoryService.revertBatch(batchId)),
-    [wrap]
-  );
+export function useRevertBatch() {
+  const queryClient = useQueryClient();
 
-  return {
-    loading,
-    error,
-    getProducts,
-    getDraftBatches,
-    generateBatch,
-    printZpl,
-    commitBatch,
-    revertBatch,
-  };
+  return useMutation({
+    mutationFn: async (batchId) => {
+      return await inventoryService.revertBatch(batchId);
+    },
+    onSuccess: () => {
+      // Discarding a batch only affects the drafts list
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.draftBatches() });
+    },
+  });
 }

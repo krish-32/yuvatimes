@@ -9,25 +9,12 @@ import {
   Clock,
   AlertCircle,
 } from "lucide-react";
+import { useProducts } from "../hooks/useInventoryAPI";
+import { Loader2 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
-import { useInventoryAPI } from "../hooks/useInventoryAPI";
 
 export default function Dashboard() {
-  const { getProducts, loading, error } = useInventoryAPI();
-  const [products, setProducts] = useState([]);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await getProducts();
-        setProducts(Array.isArray(data) ? data : data.data || []);
-      } catch (err) {
-        setLoadError(err.message);
-      }
-    };
-    load();
-  }, []);
+  const { data: products = [], isLoading: loadingProducts, error: loadError } = useProducts();
 
   // Derive stats from catalog data
   const totalProducts = products.length;
@@ -92,15 +79,21 @@ export default function Dashboard() {
       </div>
 
       {/* Error banner */}
-      {(loadError || error) && (
+      {loadError && (
         <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
           <div className="flex items-center gap-3 text-secondary-700">
             <AlertCircle size={20} />
             <span className="text-sm font-medium">
-              Could not connect to backend. Make sure your Go server is running.
+              Could not load products: {loadError.message}
             </span>
           </div>
         </GlassCard>
+      )}
+
+      {loadingProducts && (
+        <div className="flex justify-center p-8">
+          <Loader2 className="animate-spin text-primary-500" size={32} />
+        </div>
       )}
 
       {/* Stats grid */}
@@ -113,7 +106,7 @@ export default function Dashboard() {
                   {stat.label}
                 </p>
                 <p className="text-xl lg:text-2xl font-display font-bold text-primary-800 mt-2">
-                  {loading ? "..." : stat.value}
+                  {loadingProducts ? "..." : stat.value}
                 </p>
               </div>
               <div

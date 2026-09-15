@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
   Package,
   Plus,
@@ -14,24 +14,25 @@ import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
 import GlassButton from "../components/GlassButton";
 import GlassModal from "../components/GlassModal";
-import { useInventoryAPI } from "../hooks/useInventoryAPI";
+import { 
+  useProducts, 
+  useDraftBatches, 
+  useGenerateBatch, 
+  usePrintZpl, 
+  useCommitBatch, 
+  useRevertBatch 
+} from "../hooks/useInventoryAPI";
 
 export default function Inventory() {
-  const {
-    getProducts,
-    getDraftBatches,
-    generateBatch,
-    printZpl,
-    commitBatch,
-    revertBatch,
-    loading,
-    error,
-  } = useInventoryAPI();
+  const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
+  const { data: batches = [], isLoading: loadingBatches, error: batchesError, refetch: refetchBatches } = useDraftBatches();
 
-  const [products, setProducts] = useState([]);
-  const [loadError, setLoadError] = useState(null);
+  const { mutateAsync: generateBatch, isPending: isGenerating } = useGenerateBatch();
+  const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
+  const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
+  const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
+
   const [showBatchForm, setShowBatchForm] = useState(false);
-  const [batches, setBatches] = useState([]);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
@@ -46,23 +47,10 @@ export default function Inventory() {
   });
   const [formError, setFormError] = useState(null);
 
-  const loadProducts = useCallback(async () => {
-    try {
-      const pRes = await getProducts();
-      const pData = pRes.data || pRes;
-      setProducts(Array.isArray(pData) ? pData : pData.items || []);
-
-      const dRes = await getDraftBatches();
-      const dData = dRes.data || dRes;
-      setBatches(Array.isArray(dData) ? dData : []);
-    } catch (err) {
-      setLoadError(err.message);
-    }
-  }, [getProducts, getDraftBatches]);
-
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+  const handleRefresh = () => {
+    refetchProducts();
+    refetchBatches();
+  };
 
   const handleGenerateBatch = async (e) => {
     e.preventDefault();
@@ -108,8 +96,7 @@ export default function Inventory() {
         quantity: 1,
       });
 
-      // Refresh to ensure new drafts are in the main list
-      loadProducts();
+      // UI instantly refreshes because useGenerateBatch invalidates the draftBatches query!
     } catch (err) {
       setFormError(err.message);
     }
@@ -179,12 +166,7 @@ export default function Inventory() {
     if (confirm) {
       try {
         await commitBatch(activeWorkflowBatch.batchId);
-        setBatches((prev) =>
-          prev.map((b) =>
-            b.batchId === activeWorkflowBatch.batchId ? { ...b, status: "IN_STOCK" } : b,
-          ),
-        );
-        loadProducts(); // Refresh catalog
+        // UI instantly refreshes because useCommitBatch invalidates queries!
       } catch (err) {
         setFormError(err.message);
         return;
@@ -199,7 +181,7 @@ export default function Inventory() {
     setActionBatchId(batch.batchId);
     try {
       await revertBatch(batch.batchId);
-      setBatches((prev) => prev.filter((b) => b.batchId !== batch.batchId));
+      // UI instantly refreshes because useRevertBatch invalidates queries!
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -222,10 +204,10 @@ export default function Inventory() {
         <div className="flex gap-3">
           <GlassButton
             variant="secondary"
-            onClick={loadProducts}
-            disabled={loading}
+            onClick={handleRefresh}
+            isLoading={loadingProducts || loadingBatches}
           >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={16} />
             Refresh
           </GlassButton>
           <GlassButton onClick={() => setShowBatchForm(true)}>
@@ -236,13 +218,18 @@ export default function Inventory() {
       </div>
 
       {/* Error banner */}
-      {(loadError || error || formError) && (
+      {(productsError || batchesError || formError) && (
         <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
-          <div className="flex items-center gap-3 text-secondary-700">
-            <AlertCircle size={20} />
-            <span className="text-sm font-medium">
-              {loadError || error || formError}
-            </span>
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-secondary-600 mt-0.5" size={20} />
+            <div>
+              <h3 className="font-semibold text-secondary-800">
+                Error Occurred
+              </h3>
+              <p className="text-sm text-secondary-700">
+                {formError || productsError?.message || batchesError?.message}
+              </p>
+            </div>
           </div>
         </GlassCard>
       )}
@@ -283,17 +270,14 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody>
-              {loading && products.length === 0 ? (
+              {loadingProducts ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="text-center py-12 text-primary-700/50"
-                  >
-                    <Loader2 className="animate-spin inline mr-2" size={18} />
-                    Loading products...
+                  <td colSpan="7" className="px-6 py-8 text-center">
+                    <Loader2 className="animate-spin text-primary-500 mx-auto mb-2" size={24} />
+                    <p className="text-sm text-primary-700/60">Loading catalog...</p>
                   </td>
                 </tr>
-              ) : products.length === 0 && !loadError ? (
+              ) : products.length === 0 ? (
                 <tr>
                   <td
                     colSpan={7}
@@ -392,24 +376,22 @@ export default function Inventory() {
                   </div>
                 </div>
                 {batch.status === "DRAFT" && (
-                  <div className="flex gap-3">
+                  <div className="flex items-center gap-2">
                     <GlassButton
+                      variant="danger"
+                      onClick={() => handleRevert(batch)}
+                      isLoading={isReverting && actionBatchId === batch.batchId}
+                    >
+                      Discard
+                    </GlassButton>
+                    <GlassButton 
                       onClick={() => {
                         setActiveWorkflowBatch(batch);
                         setWorkflowStep(1);
                       }}
-                      disabled={actionBatchId === batch.batchId}
+                      isLoading={isPrinting || isCommitting}
                     >
-                      <Printer size={16} />
-                      Print Barcode
-                    </GlassButton>
-                    <GlassButton
-                      variant="danger"
-                      onClick={() => handleRevert(batch)}
-                      disabled={actionBatchId === batch.batchId}
-                    >
-                      <X size={16} />
-                      Revert
+                      Print & Receive
                     </GlassButton>
                   </div>
                 )}
@@ -435,7 +417,7 @@ export default function Inventory() {
             <GlassButton variant="secondary" onClick={() => setWorkflowStep(0)}>
               Cancel
             </GlassButton>
-            <GlassButton onClick={handleSilentPrint}>
+            <GlassButton onClick={handleSilentPrint} isLoading={isPrinting}>
               <Printer size={16} />
               Print Barcode
             </GlassButton>
@@ -471,7 +453,7 @@ export default function Inventory() {
             <GlassButton variant="secondary" onClick={() => handleConfirmStock(false)}>
               Close / Cancel
             </GlassButton>
-            <GlassButton onClick={() => handleConfirmStock(true)}>
+            <GlassButton onClick={() => handleConfirmStock(true)} isLoading={isCommitting}>
               <Check size={16} />
               In-Stock
             </GlassButton>
@@ -500,7 +482,7 @@ export default function Inventory() {
             >
               Cancel
             </GlassButton>
-            <GlassButton onClick={handleGenerateBatch} loading={loading}>
+            <GlassButton onClick={handleGenerateBatch} isLoading={isGenerating}>
               <Plus size={16} />
               Generate
             </GlassButton>

@@ -3,6 +3,7 @@ export default function GlassButton({
   variant = 'primary',
   className = '',
   loading = false,
+  isLoading = false,
   disabled = false,
   ...props
 }) {
@@ -16,10 +17,10 @@ export default function GlassButton({
   return (
     <button
       className={`${variantClass} px-5 py-2.5 text-sm flex items-center justify-center gap-2 ${className}`}
-      disabled={disabled || loading}
+      disabled={disabled || loading || isLoading}
       {...props}
     >
-      {loading && (
+      {(loading || isLoading) && (
         <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
       )}
       {children}
