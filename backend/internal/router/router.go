@@ -20,7 +20,7 @@ func New(h *handlers.Handler) *chi.Mux {
 
 	// CORS Middleware
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "https://yuvatimesonline.web.app", "https://yuvatimesonline.firebaseapp.com"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key"},
 		ExposedHeaders:   []string{"Link"},
