@@ -53,6 +53,7 @@ func (r *Repository) initSchema() error {
 			status TEXT NOT NULL DEFAULT 'DRAFT',
 			checkout_session_id TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			sold_at DATETIME,
 			FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_batch ON barcodes(batch_id);`,
@@ -64,6 +65,10 @@ func (r *Repository) initSchema() error {
 			return err
 		}
 	}
+
+	// Simple migration: add sold_at if it doesn't exist
+	_, _ = r.DB.Exec(`ALTER TABLE barcodes ADD COLUMN sold_at DATETIME`)
+
 	return nil
 }
 
@@ -366,8 +371,8 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (ma
 	}
 
 	for _, serial := range itemIDs {
-		// Soft delete: Mark the item as SOLD instead of completely removing it
-		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD' WHERE serial = ? AND status = 'STAGED'", serial)
+		// Soft delete: Mark the item as SOLD and record the timestamp
+		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD', sold_at = CURRENT_TIMESTAMP WHERE serial = ? AND status = 'STAGED'", serial)
 		if err != nil {
 			return nil, err
 		}
@@ -388,12 +393,12 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (ma
 func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]map[string]interface{}, error) {
 	query := `
 		SELECT 
-			b.serial, b.batch_id, b.status, b.checkout_session_id, b.created_at as sold_at,
+			b.serial, b.batch_id, b.status, b.checkout_session_id, COALESCE(b.sold_at, b.created_at) as sold_at,
 			p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
 		FROM barcodes b
 		JOIN products p ON b.product_id = p.id
 		WHERE b.status = 'SOLD'
-		ORDER BY b.created_at DESC
+		ORDER BY b.sold_at DESC, b.created_at DESC
 		LIMIT ? OFFSET ?
 	`
 	rows, err := r.DB.QueryContext(ctx, query, limit, offset)
@@ -445,12 +450,12 @@ func (r *Repository) ExportAndPurgeSales(ctx context.Context) ([]map[string]inte
 	// 1. Fetch all SOLD records
 	query := `
 		SELECT 
-			b.serial, b.batch_id, b.status, b.checkout_session_id, b.created_at as sold_at,
+			b.serial, b.batch_id, b.status, b.checkout_session_id, COALESCE(b.sold_at, b.created_at) as sold_at,
 			p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
 		FROM barcodes b
 		JOIN products p ON b.product_id = p.id
 		WHERE b.status = 'SOLD'
-		ORDER BY b.created_at DESC
+		ORDER BY b.sold_at DESC, b.created_at DESC
 	`
 	rows, err := tx.QueryContext(ctx, query)
 	if err != nil {
