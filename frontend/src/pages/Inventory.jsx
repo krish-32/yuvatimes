@@ -22,7 +22,7 @@ import {
   useCommitBatch, 
   useRevertBatch 
 } from "../hooks/useInventoryAPI";
-import { useWebUSBPrinter } from "../hooks/useWebUSBPrinter";
+import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
 export default function Inventory() {
   const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
@@ -32,7 +32,7 @@ export default function Inventory() {
   const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
   const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
-  const { isPrinting: isUsbPrinting, printerError, printZplWithUsb } = useWebUSBPrinter();
+  const { isPrinting: isUsbPrinting, printerError, printZpl: printZplToDevice } = useBrowserPrint();
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
@@ -118,8 +118,8 @@ export default function Inventory() {
       const response = await printZpl(payload);
       const zplData = response.data?.zpl || response.zpl || response;
 
-      // 2. Send the ZPL code to the local printer using WebUSB
-      await printZplWithUsb(zplData);
+      // 2. Convert ZPL to Image via Labelary and trigger window.print()
+      await printZplToDevice(zplData);
 
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
