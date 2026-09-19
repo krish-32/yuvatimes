@@ -22,7 +22,7 @@ import {
   useCommitBatch, 
   useRevertBatch 
 } from "../hooks/useInventoryAPI";
-import { useBrowserPrint } from "../hooks/useBrowserPrint";
+import { useWebUSBPrinter } from "../hooks/useWebUSBPrinter";
 
 export default function Inventory() {
   const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
@@ -32,7 +32,7 @@ export default function Inventory() {
   const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
   const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
-  const { isPrinting: isUsbPrinting, printerError, printZpl: printZplToDevice } = useBrowserPrint();
+  const { isPrinting: isUsbPrinting, printerError, printZplWithUsb } = useWebUSBPrinter();
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
@@ -114,12 +114,11 @@ export default function Inventory() {
         price: activeWorkflowBatch.sellingPrice ? activeWorkflowBatch.sellingPrice.toString() : "0",
         serials: activeWorkflowBatch.serials
       };
-      // 1. Get the ZPL code from the backend
-      const response = await printZpl(payload);
-      const zplData = response.data?.zpl || response.zpl || response;
-
-      // 2. Convert ZPL to Image via Labelary and trigger window.print()
-      await printZplToDevice(zplData);
+      // Get the USB device first (to avoid user gesture timeout), then fetch ZPL, then print silently
+      await printZplWithUsb(async () => {
+        const response = await printZpl(payload);
+        return response.data?.zpl || response.zpl || response;
+      });
 
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
