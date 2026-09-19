@@ -12,9 +12,9 @@ export function useBrowserPrint() {
     setPrinterError(null);
 
     try {
-      // 1. Request a multi-page PDF from Labelary
+      // 1. Request a multi-page PDF from Labelary (Must use HTTPS for production deployments)
       const response = await fetch(
-        "http://api.labelary.com/v1/printers/8dpmm/labels/2x1/",
+        "https://api.labelary.com/v1/printers/8dpmm/labels/2x1/",
         {
           method: "POST",
           headers: {
