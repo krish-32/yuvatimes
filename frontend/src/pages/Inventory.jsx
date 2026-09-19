@@ -14,25 +14,41 @@ import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
 import GlassButton from "../components/GlassButton";
 import GlassModal from "../components/GlassModal";
-import { 
-  useProducts, 
-  useDraftBatches, 
-  useGenerateBatch, 
-  usePrintZpl, 
-  useCommitBatch, 
-  useRevertBatch 
+import {
+  useProducts,
+  useDraftBatches,
+  useGenerateBatch,
+  usePrintZpl,
+  useCommitBatch,
+  useRevertBatch,
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
 export default function Inventory() {
-  const { data: products = [], isLoading: loadingProducts, error: productsError, refetch: refetchProducts } = useProducts();
-  const { data: batches = [], isLoading: loadingBatches, error: batchesError, refetch: refetchBatches } = useDraftBatches();
+  const {
+    data: products = [],
+    isLoading: loadingProducts,
+    error: productsError,
+    refetch: refetchProducts,
+  } = useProducts();
+  const {
+    data: batches = [],
+    isLoading: loadingBatches,
+    error: batchesError,
+    refetch: refetchBatches,
+  } = useDraftBatches();
 
-  const { mutateAsync: generateBatch, isPending: isGenerating } = useGenerateBatch();
+  const { mutateAsync: generateBatch, isPending: isGenerating } =
+    useGenerateBatch();
   const { mutateAsync: printZpl, isPending: isPrinting } = usePrintZpl();
-  const { mutateAsync: commitBatch, isPending: isCommitting } = useCommitBatch();
+  const { mutateAsync: commitBatch, isPending: isCommitting } =
+    useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
-  const { isPrinting: isUsbPrinting, printerError, printZpl: printZplToDevice } = useBrowserPrint();
+  const {
+    isPrinting: isUsbPrinting,
+    printerError,
+    printZpl: printZplToDevice,
+  } = useBrowserPrint();
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
@@ -75,7 +91,9 @@ export default function Inventory() {
       console.log(data);
 
       const rawSerials = data.serials || data.barcodes || [];
-      const serialList = rawSerials.map(b => typeof b === 'string' ? b : (b.serial || b.barcodeValue));
+      const serialList = rawSerials.map((b) =>
+        typeof b === "string" ? b : b.serial || b.barcodeValue,
+      );
 
       const batch = {
         batchId: data.batch_id || data.batchId || data.id,
@@ -83,11 +101,11 @@ export default function Inventory() {
         ...payload,
         status: "DRAFT",
       };
-      
+
       // Auto-trigger the 2-step workflow immediately
       setActiveWorkflowBatch(batch);
       setWorkflowStep(1);
-      
+
       setShowBatchForm(false);
       setBatchForm({
         productType: "watch",
@@ -111,8 +129,10 @@ export default function Inventory() {
       const payload = {
         brand: activeWorkflowBatch.brand,
         model: activeWorkflowBatch.model,
-        price: activeWorkflowBatch.sellingPrice ? activeWorkflowBatch.sellingPrice.toString() : "0",
-        serials: activeWorkflowBatch.serials
+        price: activeWorkflowBatch.sellingPrice
+          ? activeWorkflowBatch.sellingPrice.toString()
+          : "0",
+        serials: activeWorkflowBatch.serials,
       };
       // 1. Get the ZPL code from the backend
       const response = await printZpl(payload);
@@ -162,7 +182,7 @@ export default function Inventory() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl lg:text-3xl font-bold text-primary-800">
-            Inventory & Barcode Management
+            Product Inventory
           </h1>
           <p className="text-primary-700/60 mt-1">
             View catalog, generate barcode batches, and manage stock
@@ -240,8 +260,13 @@ export default function Inventory() {
               {loadingProducts ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-8 text-center">
-                    <Loader2 className="animate-spin text-primary-500 mx-auto mb-2" size={24} />
-                    <p className="text-sm text-primary-700/60">Loading catalog...</p>
+                    <Loader2
+                      className="animate-spin text-primary-500 mx-auto mb-2"
+                      size={24}
+                    />
+                    <p className="text-sm text-primary-700/60">
+                      Loading catalog...
+                    </p>
                   </td>
                 </tr>
               ) : products.length === 0 ? (
@@ -351,7 +376,7 @@ export default function Inventory() {
                     >
                       Discard
                     </GlassButton>
-                    <GlassButton 
+                    <GlassButton
                       onClick={() => {
                         setActiveWorkflowBatch(batch);
                         setWorkflowStep(1);
@@ -392,11 +417,15 @@ export default function Inventory() {
         }
       >
         <div className="space-y-4 text-primary-800">
-          <p className="text-sm">Please review the details for this draft batch before printing.</p>
+          <p className="text-sm">
+            Please review the details for this draft batch before printing.
+          </p>
           <div className="glass-card p-4 space-y-2">
             <div className="flex justify-between border-b border-white/20 pb-2">
               <span className="font-semibold">Brand / Model</span>
-              <span>{activeWorkflowBatch?.brand} {activeWorkflowBatch?.model}</span>
+              <span>
+                {activeWorkflowBatch?.brand} {activeWorkflowBatch?.model}
+              </span>
             </div>
             <div className="flex justify-between border-b border-white/20 pb-2">
               <span className="font-semibold">Selling Price</span>
@@ -417,10 +446,16 @@ export default function Inventory() {
         title="Step 2: Confirm Quality & Stock"
         footer={
           <>
-            <GlassButton variant="secondary" onClick={() => handleConfirmStock(false)}>
+            <GlassButton
+              variant="secondary"
+              onClick={() => handleConfirmStock(false)}
+            >
               Close / Cancel
             </GlassButton>
-            <GlassButton onClick={() => handleConfirmStock(true)} isLoading={isCommitting}>
+            <GlassButton
+              onClick={() => handleConfirmStock(true)}
+              isLoading={isCommitting}
+            >
               <Check size={16} />
               In-Stock
             </GlassButton>
@@ -428,10 +463,19 @@ export default function Inventory() {
         }
       >
         <div className="space-y-4 text-primary-800">
-          <p className="text-sm">Did the barcode print correctly and clearly on the physical label?</p>
+          <p className="text-sm">
+            Did the barcode print correctly and clearly on the physical label?
+          </p>
           <div className="glass-card p-4 space-y-2 text-sm bg-accent-200/20">
-            <p>If you click <strong>In-Stock</strong>, the product status will be updated from Draft to In-Stock, and the items will become active in your inventory.</p>
-            <p className="mt-2">If you click <strong>Close / Cancel</strong>, the batch will remain as a Draft so you can try printing again later.</p>
+            <p>
+              If you click <strong>In-Stock</strong>, the product status will be
+              updated from Draft to In-Stock, and the items will become active
+              in your inventory.
+            </p>
+            <p className="mt-2">
+              If you click <strong>Close / Cancel</strong>, the batch will
+              remain as a Draft so you can try printing again later.
+            </p>
           </div>
         </div>
       </GlassModal>
