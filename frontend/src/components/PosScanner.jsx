@@ -17,9 +17,15 @@ export default function PosScanner({ onScan }) {
     focusInput();
   }, [focusInput]);
 
-  // Re-focus on any click in the window (scanner should always be ready)
+  // Re-focus on any click in the window, UNLESS clicking another input/button
   useEffect(() => {
-    const handleClick = () => focusInput();
+    const handleClick = (e) => {
+      const targetTag = e.target.tagName.toLowerCase();
+      if (['input', 'button', 'select', 'textarea'].includes(targetTag) || e.target.closest('button')) {
+        return; // Let the user interact with the other element
+      }
+      focusInput();
+    };
     window.addEventListener('click', handleClick);
     return () => window.removeEventListener('click', handleClick);
   }, [focusInput]);

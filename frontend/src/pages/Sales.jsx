@@ -82,21 +82,24 @@ export default function Sales() {
                   <div className="flex items-center gap-1.5"><Hash size={14} /> Session ID</div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><CircleDollarSign size={14} /> Price</div>
+                  <div className="flex items-center gap-1.5"><CircleDollarSign size={14} /> Actual Price</div>
+                </th>
+                <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  <div className="flex items-center gap-1.5"><CircleDollarSign size={14} /> Sold Price</div>
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/20">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-primary-700/50">
+                  <td colSpan={6} className="py-12 text-center text-primary-700/50">
                     <Loader2 className="animate-spin mx-auto mb-2" size={24} />
                     Loading sales records...
                   </td>
                 </tr>
               ) : !data || data.pages[0].data.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-primary-700/40">
+                  <td colSpan={6} className="py-16 text-center text-primary-700/40">
                     <History size={40} className="mx-auto mb-3 opacity-50" />
                     <p className="text-sm">No sales records found.</p>
                   </td>
@@ -127,8 +130,11 @@ export default function Sales() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary-700/60">
                           {sale.sessionId}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-primary-800">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-700/60 line-through">
                           ₹{sale.sellingPrice.toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-primary-800">
+                          ₹{sale.soldPrice ? sale.soldPrice.toFixed(2) : sale.sellingPrice.toFixed(2)}
                         </td>
                       </tr>
                     ))}

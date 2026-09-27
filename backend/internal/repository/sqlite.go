@@ -68,6 +68,7 @@ func (r *Repository) initSchema() error {
 
 	// Simple migration: add sold_at if it doesn't exist
 	_, _ = r.DB.Exec(`ALTER TABLE barcodes ADD COLUMN sold_at DATETIME`)
+	_, _ = r.DB.Exec(`ALTER TABLE barcodes ADD COLUMN sold_price REAL`)
 
 	return nil
 }
@@ -346,39 +347,54 @@ func (r *Repository) UnstageItem(ctx context.Context, sessionID, barcode string)
 	return nil
 }
 
-func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (map[string]interface{}, error) {
+func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string, totalDiscount float64) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
 
-	rows, err := tx.QueryContext(ctx, "SELECT serial FROM barcodes WHERE checkout_session_id = ? AND status = 'STAGED'", sessionID)
+	rows, err := tx.QueryContext(ctx, "SELECT b.serial, p.selling_price FROM barcodes b JOIN products p ON b.product_id = p.id WHERE b.checkout_session_id = ? AND b.status = 'STAGED'", sessionID)
 	if err != nil {
 		return nil, err
 	}
-	var itemIDs []string
+	
+	type cartItem struct {
+		serial       string
+		sellingPrice float64
+	}
+	var items []cartItem
+	var cartTotal float64
+
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var item cartItem
+		if err := rows.Scan(&item.serial, &item.sellingPrice); err != nil {
 			return nil, err
 		}
-		itemIDs = append(itemIDs, id)
+		items = append(items, item)
+		cartTotal += item.sellingPrice
 	}
 	rows.Close()
-	if len(itemIDs) == 0 {
+	if len(items) == 0 {
 		return nil, fmt.Errorf("cart is empty")
 	}
 
-	for _, serial := range itemIDs {
-		// Soft delete: Mark the item as SOLD and record the timestamp
-		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD', sold_at = CURRENT_TIMESTAMP WHERE serial = ? AND status = 'STAGED'", serial)
+	for _, item := range items {
+		// Calculate proportional discount for this item
+		var itemDiscount float64 = 0
+		if cartTotal > 0 {
+			itemDiscount = (item.sellingPrice / cartTotal) * totalDiscount
+		}
+		soldPrice := item.sellingPrice - itemDiscount
+
+		// Soft delete: Mark the item as SOLD and record the timestamp and final price
+		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD', sold_at = CURRENT_TIMESTAMP, sold_price = ? WHERE serial = ? AND status = 'STAGED'", soldPrice, item.serial)
 		if err != nil {
 			return nil, err
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
-			return nil, fmt.Errorf("item %s no longer STAGED", serial)
+			return nil, fmt.Errorf("item %s no longer STAGED", item.serial)
 		}
 	}
 
@@ -386,14 +402,14 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string) (ma
 		return nil, err
 	}
 
-	return map[string]interface{}{"orderId": sessionID, "invoiceNumber": sessionID, "status": "COMPLETED", "inventoryItemsSold": len(itemIDs), "receiptPrintJobId": "receipt-print-job-id"}, nil
+	return map[string]interface{}{"orderId": sessionID, "invoiceNumber": sessionID, "status": "COMPLETED", "inventoryItemsSold": len(items), "receiptPrintJobId": "receipt-print-job-id"}, nil
 }
 
 // GetSalesRecords fetches paginated sold items joining products and barcodes.
 func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]map[string]interface{}, error) {
 	query := `
 		SELECT 
-			b.serial, b.batch_id, b.status, b.checkout_session_id, COALESCE(b.sold_at, b.created_at) as sold_at,
+			b.serial, b.batch_id, b.status, b.checkout_session_id, COALESCE(b.sold_at, b.created_at) as sold_at, COALESCE(b.sold_price, p.selling_price) as sold_price,
 			p.product_type, p.brand, p.model, p.purchase_price, p.selling_price
 		FROM barcodes b
 		JOIN products p ON b.product_id = p.id
@@ -410,9 +426,9 @@ func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]
 	var records []map[string]interface{}
 	for rows.Next() {
 		var serial, batchID, status, sessionID, soldAt, productType, brand, model string
-		var pPrice, sPrice float64
+		var pPrice, sPrice, soldPrice float64
 		var rawSessionID sql.NullString
-		if err := rows.Scan(&serial, &batchID, &status, &rawSessionID, &soldAt, &productType, &brand, &model, &pPrice, &sPrice); err != nil {
+		if err := rows.Scan(&serial, &batchID, &status, &rawSessionID, &soldAt, &soldPrice, &productType, &brand, &model, &pPrice, &sPrice); err != nil {
 			return nil, err
 		}
 		if rawSessionID.Valid {
@@ -425,6 +441,7 @@ func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]
 			"status": status,
 			"sessionId": sessionID,
 			"soldAt": soldAt,
+			"soldPrice": soldPrice,
 			"productType": productType,
 			"brand": brand,
 			"model": model,

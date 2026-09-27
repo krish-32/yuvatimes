@@ -16,11 +16,13 @@ export default function POS() {
   const activeSessionId = usePosStore((state) => state.activeSessionId);
   const addSession = usePosStore((state) => state.addSession);
   const setDiscount = usePosStore((state) => state.setDiscount);
+  const setDiscountType = usePosStore((state) => state.setDiscountType);
   
   const activeSession = usePosStore((state) => 
     state.sessions.find(s => s.id === state.activeSessionId)
   );
   const discount = activeSession?.discount || 0;
+  const discountType = activeSession?.discountType || 'rupees';
 
   const {
     items,
@@ -45,7 +47,7 @@ export default function POS() {
 
   const handleComplete = async () => {
     try {
-      const data = await completeCheckout();
+      const data = await completeCheckout(calculatedDiscountAmount);
       setReceipt(data);
       setShowCompleteModal(false);
     } catch (err) {
@@ -59,16 +61,25 @@ export default function POS() {
   };
 
   // Performance Optimization: Cache these calculations
-  const { subtotal, total } = useMemo(() => {
+  const { subtotal, total, calculatedDiscountAmount } = useMemo(() => {
     const calculatedSubtotal = items.reduce(
       (sum, item) => sum + (item.sellingPrice || item.price || 0),
       0
     );
+    
+    let discountAmt = 0;
+    if (discountType === 'percentage') {
+      discountAmt = calculatedSubtotal * (discount / 100);
+    } else {
+      discountAmt = discount;
+    }
+    
     return {
       subtotal: calculatedSubtotal,
-      total: Math.max(0, calculatedSubtotal - discount),
+      total: Math.max(0, calculatedSubtotal - discountAmt),
+      calculatedDiscountAmount: discountAmt
     };
-  }, [items, discount]);
+  }, [items, discount, discountType]);
 
   if (!activeSessionId) {
     return (
@@ -123,15 +134,36 @@ export default function POS() {
                 <span>₹{subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between items-center text-primary-700/70">
-                <span>Offer / Discount (₹)</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={discount === 0 ? '' : discount}
-                  onChange={(e) => setDiscount(activeSessionId, Number(e.target.value) || 0)}
-                  className="glass-input w-24 px-3 py-1.5 text-right font-mono text-sm bg-white/40"
-                  placeholder="0"
-                />
+                <div className="flex items-center gap-2">
+                  <span>Offer / Discount</span>
+                  <div className="flex bg-white/30 rounded overflow-hidden shadow-inner">
+                    <button
+                      className={`px-2 py-0.5 text-xs font-semibold ${discountType === 'rupees' ? 'bg-primary-500 text-white shadow' : 'hover:bg-white/50 text-primary-600'}`}
+                      onClick={() => setDiscountType(activeSessionId, 'rupees')}
+                    >
+                      ₹
+                    </button>
+                    <button
+                      className={`px-2 py-0.5 text-xs font-semibold ${discountType === 'percentage' ? 'bg-primary-500 text-white shadow' : 'hover:bg-white/50 text-primary-600'}`}
+                      onClick={() => setDiscountType(activeSessionId, 'percentage')}
+                    >
+                      %
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={discount === 0 ? '' : discount}
+                    onChange={(e) => setDiscount(activeSessionId, Number(e.target.value) || 0)}
+                    className="glass-input w-24 pl-3 pr-6 py-1.5 text-right font-mono text-sm bg-white/40"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-primary-700/40 text-xs font-bold pointer-events-none">
+                    {discountType === 'percentage' ? '%' : '₹'}
+                  </span>
+                </div>
               </div>
               
               <div className="pt-3 border-t border-primary-900/10 flex justify-between items-end">
@@ -183,8 +215,8 @@ export default function POS() {
               <span>₹{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-sm text-primary-700/70">
-              <span>Offer / Discount</span>
-              <span className="text-secondary-600">-₹{discount.toFixed(2)}</span>
+              <span>Offer / Discount {discountType === 'percentage' && `(${discount}%)`}</span>
+              <span className="text-secondary-600">-₹{calculatedDiscountAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-display font-bold text-primary-800 text-base pt-2 border-t border-white/20">
               <span>Total Due</span>
