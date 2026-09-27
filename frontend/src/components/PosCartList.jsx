@@ -28,7 +28,7 @@ export default function PosCartList({ items, loading, onRemove }) {
           <div className="divide-y divide-white/20">
             {items.map((item, i) => (
               <div
-                key={item.serial || i}
+                key={item.serial || item.barcode || i}
                 className="flex items-center gap-4 px-6 py-4 hover:bg-white/20 transition-colors group animate-fade-in"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100/50 text-primary-800 font-bold">
@@ -49,7 +49,8 @@ export default function PosCartList({ items, loading, onRemove }) {
                 </div>
                 <button
                   onClick={() => onRemove(item.serial || item.barcode)}
-                  className="p-2 text-secondary-500/50 hover:text-secondary-600 hover:bg-secondary-500/10 rounded-lg transition-colors"
+                  disabled={loading}
+                  className="p-2 text-secondary-500/50 hover:text-secondary-600 hover:bg-secondary-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title="Remove item"
                 >
                   <Trash2 size={18} />
