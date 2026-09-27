@@ -21,8 +21,8 @@ export function useExportAndPurgeSales() {
   return useMutation({
     mutationFn: () => salesService.exportAndPurgeSales(),
     onSuccess: () => {
-      // Invalidate the sales query so the UI reflects the empty DB
-      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      // Use resetQueries for infinite queries to completely wipe the cached pages and refetch
+      queryClient.resetQueries({ queryKey: ['sales'] });
     },
   });
 }
