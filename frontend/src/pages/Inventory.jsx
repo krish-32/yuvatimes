@@ -4,7 +4,6 @@ import {
   Plus,
   Printer,
   Check,
-  X,
   RefreshCw,
   Loader2,
   AlertCircle,
@@ -47,7 +46,6 @@ export default function Inventory() {
     useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
   const {
-    isPrinting: isUsbPrinting,
     printerError,
     printZpl: printZplToDevice,
   } = useBrowserPrint();
