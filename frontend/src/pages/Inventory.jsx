@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertCircle,
   Tag,
+  Pencil,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
@@ -21,6 +22,7 @@ import {
   usePrintZpl,
   useCommitBatch,
   useRevertBatch,
+  useUpdateProduct,
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
@@ -55,6 +57,39 @@ export default function Inventory() {
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
 
+  const { mutateAsync: updateProduct, isPending: isUpdatingProduct } = useUpdateProduct();
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  const openEditModal = (product) => {
+    setEditingProduct(product);
+    setEditForm({
+      productType: product.productType || "",
+      brand: product.brand || "",
+      model: product.model || "",
+      purchasePrice: product.purchasePrice || "",
+      sellingPrice: product.sellingPrice || "",
+    });
+  };
+
+  const handleUpdateProduct = async () => {
+    if (!editingProduct?.id) return;
+    try {
+      await updateProduct({
+        id: editingProduct.id,
+        payload: {
+          productType: editForm.productType,
+          brand: editForm.brand,
+          model: editForm.model,
+          purchasePrice: parseFloat(editForm.purchasePrice) || 0,
+          sellingPrice: parseFloat(editForm.sellingPrice) || 0,
+        },
+      });
+      setEditingProduct(null);
+    } catch (err) {
+      console.error("Failed to update product:", err);
+    }
+  };
   const [batchForm, setBatchForm] = useState({
     productType: "watch",
     brand: "",
@@ -254,12 +289,15 @@ export default function Inventory() {
                 <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
                   Available
                 </th>
+                <th className="text-center text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {loadingProducts ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center">
+                  <td colSpan="8" className="px-6 py-8 text-center">
                     <Loader2
                       className="animate-spin text-primary-500 mx-auto mb-2"
                       size={24}
@@ -272,7 +310,7 @@ export default function Inventory() {
               ) : products.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center py-12 text-primary-700/50"
                   >
                     No products found. Generate a batch to get started.
@@ -313,6 +351,15 @@ export default function Inventory() {
                       >
                         {p.availableUnits || 0}
                       </span>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-center">
+                      <button
+                        onClick={() => openEditModal(p)}
+                        className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
+                        title="Edit Product"
+                      >
+                        <Pencil size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -565,6 +612,87 @@ export default function Inventory() {
             UUIDs for barcode labels.
           </p>
         </form>
+      </GlassModal>
+
+      {/* Edit Product Modal */}
+      <GlassModal
+        open={!!editingProduct}
+        onClose={() => setEditingProduct(null)}
+        title="Edit Product"
+        footer={
+          <>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setEditingProduct(null)}
+              disabled={isUpdatingProduct}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton
+              onClick={handleUpdateProduct}
+              isLoading={isUpdatingProduct}
+              disabled={!editForm?.productType || !editForm?.brand || !editForm?.model}
+            >
+              Save Changes
+            </GlassButton>
+          </>
+        }
+      >
+        {editForm && (
+          <div className="space-y-4 pt-2">
+            <GlassInput
+              label="Product Type"
+              value={editForm.productType}
+              onChange={(e) =>
+                setEditForm({ ...editForm, productType: e.target.value })
+              }
+              placeholder="e.g. watch, strap"
+              required
+            />
+            <GlassInput
+              label="Brand"
+              value={editForm.brand}
+              onChange={(e) =>
+                setEditForm({ ...editForm, brand: e.target.value })
+              }
+              placeholder="e.g. Rolex"
+              required
+            />
+            <GlassInput
+              label="Model"
+              value={editForm.model}
+              onChange={(e) =>
+                setEditForm({ ...editForm, model: e.target.value })
+              }
+              placeholder="e.g. Submariner"
+              required
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <GlassInput
+                label="Purchase Price (₹)"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editForm.purchasePrice}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, purchasePrice: e.target.value })
+                }
+                placeholder="0.00"
+              />
+              <GlassInput
+                label="Selling Price (₹)"
+                type="number"
+                step="0.01"
+                min="0"
+                value={editForm.sellingPrice}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, sellingPrice: e.target.value })
+                }
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+        )}
       </GlassModal>
     </div>
   );

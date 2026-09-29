@@ -206,7 +206,7 @@ func (r *Repository) CheckSerialExists(ctx context.Context, serial string) (bool
 
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {
 	query := `
-		SELECT p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
+		SELECT p.id, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
 			COUNT(b.serial) as total_units,
 			SUM(CASE WHEN b.status = 'IN_STOCK' THEN 1 ELSE 0 END) as available_units
 		FROM products p
@@ -219,17 +219,37 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([
 
 	var results []map[string]interface{}
 	for rows.Next() {
-		var pType, brand, model string
+		var id, pType, brand, model string
 		var pPrice, sPrice float64
 		var total, avail sql.NullInt64
-		if err := rows.Scan(&pType, &brand, &model, &pPrice, &sPrice, &total, &avail); err != nil { return nil, err }
+		if err := rows.Scan(&id, &pType, &brand, &model, &pPrice, &sPrice, &total, &avail); err != nil { return nil, err }
 		results = append(results, map[string]interface{}{
-			"productType": pType, "brand": brand, "model": model,
+			"id": id, "productType": pType, "brand": brand, "model": model,
 			"purchasePrice": pPrice, "sellingPrice": sPrice,
 			"totalUnits": int(total.Int64), "availableUnits": int(avail.Int64),
 		})
 	}
 	return results, nil
+}
+
+func (r *Repository) UpdateProduct(ctx context.Context, id, pType, brand, model string, purchasePrice, sellingPrice float64) error {
+	query := `
+		UPDATE products 
+		SET product_type = ?, brand = ?, model = ?, purchase_price = ?, selling_price = ?
+		WHERE id = ?
+	`
+	res, err := r.DB.ExecContext(ctx, query, pType, brand, model, purchasePrice, sellingPrice, id)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("product not found")
+	}
+	return nil
 }
 
 func (r *Repository) SearchBarcode(ctx context.Context, barcode string) (map[string]interface{}, error) {

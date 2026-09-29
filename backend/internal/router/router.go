@@ -36,6 +36,7 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Post("/barcode-batches/{batchId}/commit", h.CommitBatch)
 			r.Post("/barcode-batches/{batchId}/revert", h.RevertBatch)
 			r.Get("/products", h.GetProducts)
+			r.Put("/products/{id}", h.UpdateProduct)
 			r.Get("/barcodes/{barcodeValue}", h.SearchBarcode)
 		})
 

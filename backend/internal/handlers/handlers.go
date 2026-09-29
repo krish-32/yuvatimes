@@ -151,6 +151,43 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
 }
 
+func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
+	productID := chi.URLParam(r, "id")
+	if productID == "" {
+		respondError(w, http.StatusBadRequest, "missing product ID")
+		return
+	}
+
+	var req struct {
+		ProductType   string  `json:"productType"`
+		Brand         string  `json:"brand"`
+		Model         string  `json:"model"`
+		PurchasePrice float64 `json:"purchasePrice"`
+		SellingPrice  float64 `json:"sellingPrice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "invalid request payload")
+		return
+	}
+
+	if req.ProductType == "" || req.Brand == "" || req.Model == "" {
+		respondError(w, http.StatusBadRequest, "type, brand, and model are required")
+		return
+	}
+
+	err := h.Repo.UpdateProduct(r.Context(), productID, req.ProductType, req.Brand, req.Model, req.PurchasePrice, req.SellingPrice)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Product updated successfully"})
+}
+
 func (h *Handler) SearchBarcode(w http.ResponseWriter, r *http.Request) {
 	barcodeValue := chi.URLParam(r, "barcodeValue")
 	if barcodeValue == "" {

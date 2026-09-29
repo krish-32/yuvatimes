@@ -15,6 +15,17 @@ export function useProducts() {
     },
   });
 }
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, payload }) => {
+      return await inventoryService.updateProduct(id, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+    },
+  });
+}
 
 export function useDraftBatches() {
   return useQuery({
