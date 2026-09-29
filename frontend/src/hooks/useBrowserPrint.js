@@ -7,14 +7,14 @@ export function useBrowserPrint() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printerError, setPrinterError] = useState(null);
 
-  const printZpl = async (zplString) => {
+  const printZpl = async (zplString, size = "2x1") => {
     setIsPrinting(true);
     setPrinterError(null);
 
     try {
       // 1. Request a multi-page PDF from Labelary (Must use HTTPS for production deployments)
       const response = await fetch(
-        "https://api.labelary.com/v1/printers/8dpmm/labels/2x1/",
+        `https://api.labelary.com/v1/printers/8dpmm/labels/${size}/`,
         {
           method: "POST",
           headers: {

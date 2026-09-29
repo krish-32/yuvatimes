@@ -11,6 +11,8 @@ import ReceiptModal from '../components/ReceiptModal';
 
 import { useCheckoutSession } from '../hooks/useCheckoutSession';
 import { usePosStore } from '../store/usePosStore';
+import { useBrowserPrint } from '../hooks/useBrowserPrint';
+import { generateReceiptZpl } from '../utils/receiptZpl';
 
 export default function POS() {
   const activeSessionId = usePosStore((state) => state.activeSessionId);
@@ -37,6 +39,8 @@ export default function POS() {
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [receipt, setReceipt] = useState(null);
 
+  const { isPrinting, printZpl } = useBrowserPrint();
+
   const handleRemove = async (serial) => {
     try {
       await removeItem(serial);
@@ -48,8 +52,23 @@ export default function POS() {
   const handleComplete = async () => {
     try {
       const data = await completeCheckout(calculatedDiscountAmount);
-      setReceipt(data);
       setShowCompleteModal(false);
+
+      // Instantly generate and print the receipt ZPL!
+      const receiptData = {
+        storeName: "YuvaTimes Watch POS",
+        sessionId: data.invoiceNumber || activeSessionId,
+        items,
+        subtotal,
+        discountAmount: calculatedDiscountAmount,
+        totalDue: total,
+      };
+      
+      const { zpl, size } = generateReceiptZpl(receiptData);
+      printZpl(zpl, size).catch(err => {
+        console.error("Silent print failed:", err);
+      });
+      
     } catch (err) {
       // error handled in useCheckoutSession
     }
@@ -197,7 +216,7 @@ export default function POS() {
             <GlassButton variant="secondary" onClick={() => setShowCompleteModal(false)}>
               Cancel
             </GlassButton>
-            <GlassButton onClick={handleComplete} loading={completing}>
+            <GlassButton onClick={handleComplete} loading={completing || isPrinting}>
               <CheckCircle2 size={16} />
               Confirm Sale
             </GlassButton>

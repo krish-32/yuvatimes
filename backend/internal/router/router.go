@@ -17,6 +17,7 @@ func New(h *handlers.Handler) *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.NoCache)
 
 	// CORS Middleware
 	r.Use(cors.Handler(cors.Options{
