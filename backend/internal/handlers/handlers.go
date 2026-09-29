@@ -233,7 +233,13 @@ func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID)
+	var reqBody struct {
+		DiscountAmount float64 `json:"discountAmount"`
+	}
+	// Decode may fail if body is empty, which is fine (default 0)
+	json.NewDecoder(r.Body).Decode(&reqBody)
+
+	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID, reqBody.DiscountAmount)
 	if err != nil {
 		if strings.Contains(err.Error(), "empty") || strings.Contains(err.Error(), "no longer STAGED") {
 			respondError(w, http.StatusConflict, err.Error())

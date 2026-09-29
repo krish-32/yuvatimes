@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { posService } from '../api/apiCalls';
 import { usePosStore } from '../store/usePosStore';
+import { queryClient, inventoryKeys } from '../lib/queryClient';
 
 /**
  * Hook for POS checkout session management integrating with Zustand multi-session store.
@@ -27,7 +28,11 @@ export function useCheckoutSession(sessionId) {
       const response = await posService.getCartItems(sessionId);
       const data = response.data || response;
       const fetchedItems = Array.isArray(data) ? data : data.items || [];
-      syncItems(sessionId, fetchedItems);
+      const flattenedItems = fetchedItems.map(item => ({
+        ...item,
+        ...(item.product || {})
+      }));
+      syncItems(sessionId, flattenedItems);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,6 +47,7 @@ export function useCheckoutSession(sessionId) {
     try {
       const data = await posService.scanItem(sessionId, serial);
       await fetchItems();
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
       return data;
     } catch (err) {
       setError(err.message);
@@ -58,6 +64,7 @@ export function useCheckoutSession(sessionId) {
     try {
       await posService.removeItem(sessionId, serial);
       await fetchItems();
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
     } catch (err) {
       setError(err.message);
       throw err;
@@ -66,13 +73,15 @@ export function useCheckoutSession(sessionId) {
     }
   }, [sessionId, fetchItems]);
 
-  const completeCheckout = useCallback(async () => {
+  const completeCheckout = useCallback(async (discountAmount = 0) => {
     if (!sessionId) return null;
     setCompleting(true);
     setError(null);
     try {
-      const data = await posService.completeCheckout(sessionId);
+      const data = await posService.completeCheckout(sessionId, discountAmount);
       clearSessionItems(sessionId);
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      queryClient.resetQueries({ queryKey: ['sales'] });
       return data;
     } catch (err) {
       setError(err.message);

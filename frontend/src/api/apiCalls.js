@@ -19,7 +19,7 @@ export const posService = {
   getCartItems: (sessionId) => api.get(`/api/checkout/sessions/${sessionId}/items`),
   scanItem: (sessionId, serial) => api.post(`/api/checkout/sessions/${sessionId}/items`, { barcode: serial }, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),
   removeItem: (sessionId, serial) => api.delete(`/api/checkout/sessions/${sessionId}/items/${serial}`),
-  completeCheckout: (sessionId) => api.post(`/api/checkout/sessions/${sessionId}/complete`, {}, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),
+  completeCheckout: (sessionId, discountAmount = 0) => api.post(`/api/checkout/sessions/${sessionId}/complete`, { discountAmount }, { headers: { 'Idempotency-Key': crypto.randomUUID() } }),
 };
 
 // ==========================================
