@@ -3,24 +3,39 @@ import { Plus, X, ShoppingCart, AlertCircle } from 'lucide-react';
 import { usePosStore } from '../store/usePosStore';
 import GlassModal from './GlassModal';
 import GlassButton from './GlassButton';
+import { posService } from '../api/apiCalls';
+import { queryClient, inventoryKeys } from '../lib/queryClient';
 
 export default function PosTabs() {
   const { sessions, activeSessionId, addSession, setActiveSession, removeSession } = usePosStore();
   const [tabToRemove, setTabToRemove] = useState(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const handleRemoveClick = (e, session) => {
     e.stopPropagation(); // prevent triggering setActiveSession
     if (session.items.length > 0) {
-      setTabToRemove(session.id);
+      setTabToRemove(session);
     } else {
       removeSession(session.id);
     }
   };
 
-  const confirmRemove = () => {
+  const confirmRemove = async () => {
     if (tabToRemove) {
-      removeSession(tabToRemove);
-      setTabToRemove(null);
+      setIsRemoving(true);
+      try {
+        // Release items back to inventory before closing the tab
+        await Promise.all(
+          tabToRemove.items.map(item => posService.removeItem(tabToRemove.id, item.serial || item.barcode))
+        );
+      } catch (err) {
+        console.error("Failed to release items back to inventory", err);
+      } finally {
+        removeSession(tabToRemove.id);
+        setTabToRemove(null);
+        setIsRemoving(false);
+        queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      }
     }
   };
 
@@ -90,10 +105,10 @@ export default function PosTabs() {
         title="Close Active Session?"
         footer={
           <>
-            <GlassButton variant="secondary" onClick={() => setTabToRemove(null)}>
+            <GlassButton variant="secondary" onClick={() => setTabToRemove(null)} disabled={isRemoving}>
               Cancel
             </GlassButton>
-            <GlassButton variant="danger" onClick={confirmRemove}>
+            <GlassButton variant="danger" onClick={confirmRemove} isLoading={isRemoving}>
               Yes, Close Session
             </GlassButton>
           </>
