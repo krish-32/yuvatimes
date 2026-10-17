@@ -1,10 +1,14 @@
 package config
 
-import "os"
+import (
+	"os"
+)
 
 type Config struct {
-	DBPath string
-	Port   string
+	DBPath         string
+	TursoURL       string
+	TursoAuthToken string
+	Port           string
 }
 
 func Load() *Config {
@@ -14,8 +18,18 @@ func Load() *Config {
 	} else if port[0] != ':' {
 		port = ":" + port
 	}
+
+	tursoURL := os.Getenv("TURSO_DATABASE_URL")
+	tursoToken := os.Getenv("TURSO_AUTH_TOKEN")
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "backend.db"
+	}
+
 	return &Config{
-		DBPath: "backend.db",
-		Port:   port,
+		DBPath:         dbPath,
+		TursoURL:       tursoURL,
+		TursoAuthToken: tursoToken,
+		Port:           port,
 	}
 }

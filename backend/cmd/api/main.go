@@ -13,7 +13,7 @@ import (
 func main() {
 	cfg := config.Load()
 
-	repo, err := repository.NewRepository(cfg.DBPath)
+	repo, err := repository.NewRepository(cfg.DBPath, cfg.TursoURL, cfg.TursoAuthToken)
 	if err != nil {
 		log.Fatalf("failed to initialize repository: %v", err)
 	}

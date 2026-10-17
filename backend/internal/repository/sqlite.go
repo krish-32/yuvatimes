@@ -10,19 +10,43 @@ import (
 	"backend/internal/models"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
 type Repository struct {
 	DB *sql.DB
 }
 
-func NewRepository(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
-	if err != nil {
-		return nil, err
+// NewRepository creates a new repository. If tursoURL is provided, it connects to
+// Turso Cloud DB. Otherwise it falls back to a local SQLite file (for local dev).
+func NewRepository(dbPath, tursoURL, tursoAuthToken string) (*Repository, error) {
+	var db *sql.DB
+	var err error
+
+	if tursoURL != "" {
+		// Production: Connect to Turso Cloud DB via libsql HTTP driver
+		// libsql-client-go accepts the token as a query param on the URL
+		connStr := tursoURL
+		if tursoAuthToken != "" {
+			connStr = fmt.Sprintf("%s?authToken=%s", tursoURL, tursoAuthToken)
+		}
+		db, err = sql.Open("libsql", connStr)
+		if err != nil {
+			return nil, err
+		}
+		// For remote Turso, allow a small connection pool
+		db.SetMaxOpenConns(5)
+		db.SetMaxIdleConns(3)
+		db.SetConnMaxLifetime(5 * time.Minute)
+	} else {
+		// Local dev: Use a local SQLite file via the libsql driver (file: scheme)
+		db, err = sql.Open("libsql", "file:"+dbPath)
+		if err != nil {
+			return nil, err
+		}
+		// Single connection is safest for local SQLite file access
+		db.SetMaxOpenConns(1)
 	}
-	db.SetMaxOpenConns(1)
 
 	repo := &Repository{DB: db}
 	if err := repo.initSchema(); err != nil {
@@ -33,8 +57,6 @@ func NewRepository(dbPath string) (*Repository, error) {
 
 func (r *Repository) initSchema() error {
 	queries := []string{
-		`PRAGMA journal_mode=WAL;`,
-		`PRAGMA foreign_keys=ON;`,
 		`CREATE TABLE IF NOT EXISTS products (
 			id TEXT PRIMARY KEY,
 			product_type TEXT NOT NULL,
@@ -54,6 +76,7 @@ func (r *Repository) initSchema() error {
 			checkout_session_id TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			sold_at DATETIME,
+			sold_price REAL,
 			FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_batch ON barcodes(batch_id);`,
@@ -66,7 +89,7 @@ func (r *Repository) initSchema() error {
 		}
 	}
 
-	// Simple migration: add sold_at if it doesn't exist
+	// Idempotent column migrations — ignore errors (column may already exist)
 	_, _ = r.DB.Exec(`ALTER TABLE barcodes ADD COLUMN sold_at DATETIME`)
 	_, _ = r.DB.Exec(`ALTER TABLE barcodes ADD COLUMN sold_price REAL`)
 
@@ -75,7 +98,9 @@ func (r *Repository) initSchema() error {
 
 func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pType, brand, model string, pPrice, sPrice float64, barcodes []string) (*models.Product, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer tx.Rollback()
 
 	var productID string
@@ -85,7 +110,9 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 			productID = uuid.New().String()
 			_, err = tx.ExecContext(ctx, "INSERT INTO products (id, product_type, brand, model, purchase_price, selling_price) VALUES (?, ?, ?, ?, ?, ?)",
 				productID, pType, brand, model, pPrice, sPrice)
-			if err != nil { return nil, err }
+			if err != nil {
+				return nil, err
+			}
 		} else {
 			return nil, err
 		}
@@ -112,23 +139,33 @@ func (r *Repository) CreateBarcodeBatch(ctx context.Context, batchID string, pTy
 
 func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer tx.Rollback()
 
 	var productID string
 	var createdAt time.Time
 	err = tx.QueryRowContext(ctx, "SELECT product_id, created_at FROM barcodes WHERE batch_id = ? LIMIT 1", batchID).Scan(&productID, &createdAt)
 	if err != nil {
-		if err == sql.ErrNoRows { return nil, fmt.Errorf("batch not found") }
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("batch not found")
+		}
 		return nil, err
 	}
 
 	res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'IN_STOCK' WHERE batch_id = ? AND status = 'DRAFT'", batchID)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	affected, _ := res.RowsAffected()
-	if affected == 0 { return nil, fmt.Errorf("batch already committed or no drafts found") }
+	if affected == 0 {
+		return nil, fmt.Errorf("batch already committed or no drafts found")
+	}
 
-	if err := tx.Commit(); err != nil { return nil, err }
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return map[string]interface{}{"status": "committed", "affected_units": affected}, nil
 }
 
@@ -142,7 +179,9 @@ func (r *Repository) GetDraftBatches(ctx context.Context) ([]map[string]interfac
 		ORDER BY p.created_at DESC
 	`
 	rows, err := r.DB.QueryContext(ctx, query)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var drafts []map[string]interface{}
@@ -152,16 +191,16 @@ func (r *Repository) GetDraftBatches(ctx context.Context) ([]map[string]interfac
 		if err := rows.Scan(&batchID, &brand, &model, &pPrice, &sPrice, &serialsStr); err != nil {
 			return nil, err
 		}
-		
+
 		serials := strings.Split(serialsStr, ",")
 		drafts = append(drafts, map[string]interface{}{
-			"batchId": batchID,
-			"brand": brand,
-			"model": model,
+			"batchId":       batchID,
+			"brand":         brand,
+			"model":         model,
 			"purchasePrice": pPrice,
-			"sellingPrice": sPrice,
-			"serials": serials,
-			"status": "DRAFT",
+			"sellingPrice":  sPrice,
+			"serials":       serials,
+			"status":        "DRAFT",
 		})
 	}
 	if drafts == nil {
@@ -172,13 +211,16 @@ func (r *Repository) GetDraftBatches(ctx context.Context) ([]map[string]interfac
 
 func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer tx.Rollback()
 
-	// Delete draft barcodes
 	res, err := tx.ExecContext(ctx, "DELETE FROM barcodes WHERE batch_id = ? AND status = 'DRAFT'", batchID)
-	if err != nil { return err }
-	
+	if err != nil {
+		return err
+	}
+
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return fmt.Errorf("no draft records found for batch or batch already committed")
@@ -186,22 +228,23 @@ func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {
 
 	// Clean up orphaned products
 	_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id NOT IN (SELECT DISTINCT product_id FROM barcodes)")
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }
 
 func (r *Repository) CheckSerialExists(ctx context.Context, serial string) (bool, error) {
 	var dummy int
-	// SELECT 1 with LIMIT 1 is the most performant existence check in SQL
 	err := r.DB.QueryRowContext(ctx, "SELECT 1 FROM barcodes WHERE serial = ? LIMIT 1", serial).Scan(&dummy)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return false, nil // Serial is unique!
+			return false, nil
 		}
-		return false, err // Actual database error
+		return false, err
 	}
-	return true, nil // Serial already exists
+	return true, nil
 }
 
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {
@@ -214,7 +257,9 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([
 		GROUP BY p.id LIMIT ? OFFSET ?
 	`
 	rows, err := r.DB.QueryContext(ctx, query, limit, (page-1)*limit)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 
 	var results []map[string]interface{}
@@ -222,7 +267,9 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([
 		var id, pType, brand, model string
 		var pPrice, sPrice float64
 		var total, avail sql.NullInt64
-		if err := rows.Scan(&id, &pType, &brand, &model, &pPrice, &sPrice, &total, &avail); err != nil { return nil, err }
+		if err := rows.Scan(&id, &pType, &brand, &model, &pPrice, &sPrice, &total, &avail); err != nil {
+			return nil, err
+		}
 		results = append(results, map[string]interface{}{
 			"id": id, "productType": pType, "brand": brand, "model": model,
 			"purchasePrice": pPrice, "sellingPrice": sPrice,
@@ -263,7 +310,9 @@ func (r *Repository) SearchBarcode(ctx context.Context, barcode string) (map[str
 	var pPrice, sPrice float64
 	err := r.DB.QueryRowContext(ctx, query, barcode).Scan(&pType, &brand, &model, &pPrice, &sPrice, &serial, &status)
 	if err != nil {
-		if err == sql.ErrNoRows { return nil, fmt.Errorf("not found") }
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("not found")
+		}
 		return nil, err
 	}
 	return map[string]interface{}{
@@ -275,7 +324,9 @@ func (r *Repository) SearchBarcode(ctx context.Context, barcode string) (map[str
 
 func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (map[string]interface{}, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer tx.Rollback()
 
 	var pType, pBrand, pModel, status, existingSession sql.NullString
@@ -288,7 +339,9 @@ func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (
 	`
 	err = tx.QueryRowContext(ctx, query, barcode).Scan(&status, &existingSession, &pType, &pBrand, &pModel, &pPrice, &sPrice)
 	if err != nil {
-		if err == sql.ErrNoRows { return nil, fmt.Errorf("barcode not found") }
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("barcode not found")
+		}
 		return nil, err
 	}
 
@@ -298,14 +351,22 @@ func (r *Repository) StageItem(ctx context.Context, sessionID, barcode string) (
 		}
 		return nil, fmt.Errorf("item staged elsewhere")
 	}
-	if status.String != "IN_STOCK" { return nil, fmt.Errorf("item not available") }
+	if status.String != "IN_STOCK" {
+		return nil, fmt.Errorf("item not available")
+	}
 
 	res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'STAGED', checkout_session_id = ? WHERE serial = ? AND status = 'IN_STOCK'", sessionID, barcode)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	affected, _ := res.RowsAffected()
-	if affected == 0 { return nil, fmt.Errorf("concurrency conflict") }
+	if affected == 0 {
+		return nil, fmt.Errorf("concurrency conflict")
+	}
 
-	if err := tx.Commit(); err != nil { return nil, err }
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return map[string]interface{}{"sessionId": sessionID, "cartItemId": barcode, "inventoryItemId": barcode, "barcode": barcode, "status": "STAGED", "product": map[string]interface{}{"productType": pType.String, "brand": pBrand.String, "model": pModel.String, "purchasePrice": pPrice.Float64, "sellingPrice": sPrice.Float64}}, nil
 }
 
@@ -330,22 +391,21 @@ func (r *Repository) GetStagedItems(ctx context.Context, sessionID string) ([]ma
 			return nil, err
 		}
 		items = append(items, map[string]interface{}{
-			"sessionId": sessionID,
-			"cartItemId": barcode.String,
+			"sessionId":       sessionID,
+			"cartItemId":      barcode.String,
 			"inventoryItemId": barcode.String,
-			"barcode": barcode.String,
-			"status": "STAGED",
+			"barcode":         barcode.String,
+			"status":          "STAGED",
 			"product": map[string]interface{}{
-				"productType": pType.String,
-				"brand": pBrand.String,
-				"model": pModel.String,
+				"productType":   pType.String,
+				"brand":         pBrand.String,
+				"model":         pModel.String,
 				"purchasePrice": pPrice.Float64,
-				"sellingPrice": sPrice.Float64,
+				"sellingPrice":  sPrice.Float64,
 			},
 		})
 	}
-	
-	// If items is nil, return an empty array instead of null for standard JSON compliance
+
 	if items == nil {
 		items = []map[string]interface{}{}
 	}
@@ -378,7 +438,7 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string, tot
 	if err != nil {
 		return nil, err
 	}
-	
+
 	type cartItem struct {
 		serial       string
 		sellingPrice float64
@@ -400,14 +460,12 @@ func (r *Repository) CompleteCheckout(ctx context.Context, sessionID string, tot
 	}
 
 	for _, item := range items {
-		// Calculate proportional discount for this item
 		var itemDiscount float64 = 0
 		if cartTotal > 0 {
 			itemDiscount = (item.sellingPrice / cartTotal) * totalDiscount
 		}
 		soldPrice := item.sellingPrice - itemDiscount
 
-		// Soft delete: Mark the item as SOLD and record the timestamp and final price
 		res, err := tx.ExecContext(ctx, "UPDATE barcodes SET status = 'SOLD', sold_at = CURRENT_TIMESTAMP, sold_price = ? WHERE serial = ? AND status = 'STAGED'", soldPrice, item.serial)
 		if err != nil {
 			return nil, err
@@ -454,17 +512,17 @@ func (r *Repository) GetSalesRecords(ctx context.Context, limit, offset int) ([]
 		if rawSessionID.Valid {
 			sessionID = rawSessionID.String
 		}
-		
+
 		record := map[string]interface{}{
-			"serial": serial,
-			"batchId": batchID,
-			"status": status,
-			"sessionId": sessionID,
-			"soldAt": soldAt,
-			"soldPrice": soldPrice,
-			"productType": productType,
-			"brand": brand,
-			"model": model,
+			"serial":       serial,
+			"batchId":      batchID,
+			"status":       status,
+			"sessionId":    sessionID,
+			"soldAt":       soldAt,
+			"soldPrice":    soldPrice,
+			"productType":  productType,
+			"brand":        brand,
+			"model":        model,
 			"purchasePrice": pPrice,
 			"sellingPrice": sPrice,
 		}
@@ -484,7 +542,6 @@ func (r *Repository) ExportAndPurgeSales(ctx context.Context) ([]map[string]inte
 	}
 	defer tx.Rollback()
 
-	// 1. Fetch all SOLD records
 	query := `
 		SELECT 
 			b.serial, b.batch_id, b.status, b.checkout_session_id, COALESCE(b.sold_at, b.created_at) as sold_at,
@@ -510,25 +567,24 @@ func (r *Repository) ExportAndPurgeSales(ctx context.Context) ([]map[string]inte
 		if rawSessionID.Valid {
 			sessionID = rawSessionID.String
 		}
-		
+
 		record := map[string]interface{}{
-			"serial": serial,
-			"batchId": batchID,
-			"status": status,
-			"sessionId": sessionID,
-			"soldAt": soldAt,
-			"productType": productType,
-			"brand": brand,
-			"model": model,
+			"serial":        serial,
+			"batchId":       batchID,
+			"status":        status,
+			"sessionId":     sessionID,
+			"soldAt":        soldAt,
+			"productType":   productType,
+			"brand":         brand,
+			"model":         model,
 			"purchasePrice": pPrice,
-			"sellingPrice": sPrice,
+			"sellingPrice":  sPrice,
 		}
 		records = append(records, record)
 	}
 	rows.Close()
 
 	if len(records) > 0 {
-		// 2. Permanently delete all SOLD records
 		_, err = tx.ExecContext(ctx, "DELETE FROM barcodes WHERE status = 'SOLD'")
 		if err != nil {
 			return nil, err
