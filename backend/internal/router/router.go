@@ -30,6 +30,9 @@ func New(h *handlers.Handler) *chi.Mux {
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		// Dashboard
+		r.Get("/dashboard/stats", h.GetDashboardStats)
+
 		r.Route("/inventory", func(r chi.Router) {
 			r.Post("/barcode-batches", h.GenerateBarcodes)
 			r.Get("/barcode-batches/drafts", h.GetDraftBatches)

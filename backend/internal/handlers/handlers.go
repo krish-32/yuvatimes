@@ -160,6 +160,16 @@ func (h *Handler) GetDraftBatches(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: drafts})
 }
 
+// GetDashboardStats returns aggregated inventory statistics computed in the DB.
+func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Repo.GetDashboardStats(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to compute dashboard stats")
+		return
+	}
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: stats})
+}
+
 func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {

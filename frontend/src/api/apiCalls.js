@@ -10,6 +10,13 @@ const generateUUID = () => {
       });
 };
 // ==========================================
+// DASHBOARD
+// ==========================================
+export const dashboardService = {
+  getStats: () => api.get('/api/dashboard/stats'),
+};
+
+// ==========================================
 // INVENTORY & BARCODE MANAGEMENT
 // ==========================================
 export const inventoryService = {

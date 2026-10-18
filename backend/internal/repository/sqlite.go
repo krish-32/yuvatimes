@@ -302,6 +302,32 @@ func (r *Repository) FilterExistingSerials(ctx context.Context, serials []string
 	return existing, nil
 }
 
+// GetDashboardStats returns aggregate inventory statistics computed entirely in the DB,
+// avoiding the need to fetch and iterate all products on the client.
+func (r *Repository) GetDashboardStats(ctx context.Context) (map[string]interface{}, error) {
+	query := `
+		SELECT
+			COUNT(DISTINCT p.id)                                          AS total_products,
+			COALESCE(COUNT(b.serial), 0)                                  AS total_units,
+			COALESCE(SUM(CASE WHEN b.status = 'IN_STOCK' THEN 1 ELSE 0 END), 0) AS available_units,
+			COALESCE(SUM(CASE WHEN b.status = 'IN_STOCK' THEN p.selling_price ELSE 0 END), 0) AS total_value
+		FROM products p
+		LEFT JOIN barcodes b ON p.id = b.product_id
+	`
+	var totalProducts, totalUnits, availableUnits int64
+	var totalValue float64
+	err := r.DB.QueryRowContext(ctx, query).Scan(&totalProducts, &totalUnits, &availableUnits, &totalValue)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"totalProducts":  totalProducts,
+		"totalUnits":     totalUnits,
+		"availableUnits": availableUnits,
+		"totalValue":     totalValue,
+	}, nil
+}
+
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int, search string) ([]map[string]interface{}, error) {
 	baseQuery := `
 		SELECT p.id, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,

@@ -11,6 +11,11 @@ export const queryClient = new QueryClient({
   },
 });
 
+export const dashboardKeys = {
+  all: ["dashboard"],
+  stats: () => [...dashboardKeys.all, "stats"],
+};
+
 export const inventoryKeys = {
   all: ["inventory"],
   products: (search = '') => [...inventoryKeys.all, "products", search],
