@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Package,
   Plus,
@@ -9,6 +9,11 @@ import {
   AlertCircle,
   Tag,
   Pencil,
+  Trash2,
+  Search,
+  X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
@@ -22,16 +27,58 @@ import {
   useCommitBatch,
   useRevertBatch,
   useUpdateProduct,
+  useDeleteProduct,
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
+/* ── Tiny inline toast ─────────────────────────────────────────── */
+function Toast({ toast, onDismiss }) {
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(t);
+  }, [toast, onDismiss]);
+
+  if (!toast) return null;
+
+  const isSuccess = toast.type === "success";
+  return (
+    <div className="fixed bottom-6 right-6 z-[100] animate-fade-in">
+      <div
+        className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border backdrop-blur-md ${
+          isSuccess
+            ? "bg-green-50/90 border-green-300 text-green-800"
+            : "bg-red-50/90 border-red-300 text-red-800"
+        }`}
+      >
+        {isSuccess ? (
+          <CheckCircle2 size={18} className="text-green-600 shrink-0" />
+        ) : (
+          <AlertTriangle size={18} className="text-red-600 shrink-0" />
+        )}
+        <span className="text-sm font-medium">{toast.message}</span>
+        <button
+          onClick={onDismiss}
+          className="ml-2 opacity-60 hover:opacity-100"
+        >
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Inventory() {
+  /* ── Existing query hooks ──────────────────────────────────── */
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+
   const {
     data: products = [],
     isLoading: loadingProducts,
     error: productsError,
     refetch: refetchProducts,
-  } = useProducts();
+  } = useProducts(appliedSearch);
   const {
     data: batches = [],
     isLoading: loadingBatches,
@@ -45,20 +92,40 @@ export default function Inventory() {
   const { mutateAsync: commitBatch, isPending: isCommitting } =
     useCommitBatch();
   const { mutateAsync: revertBatch, isPending: isReverting } = useRevertBatch();
-  const {
-    printerError,
-    printZpl: printZplToDevice,
-  } = useBrowserPrint();
+  const { printerError, printZpl: printZplToDevice } = useBrowserPrint();
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
 
-  const { mutateAsync: updateProduct, isPending: isUpdatingProduct } = useUpdateProduct();
+  const { mutateAsync: updateProduct, isPending: isUpdatingProduct } =
+    useUpdateProduct();
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState(null);
 
+  /* ── Delete state ──────────────────────────────────────────── */
+  const { mutateAsync: deleteProduct, isPending: isDeleting } =
+    useDeleteProduct();
+  const [deletingProduct, setDeletingProduct] = useState(null);
+
+  /* ── Toast state ───────────────────────────────────────────── */
+  const [toast, setToast] = useState(null);
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  /* ── Search handlers ───────────────────────────────────────── */
+  const handleApplySearch = () => {
+    setAppliedSearch(searchInput.trim());
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setAppliedSearch("");
+  };
+
+  const hasActiveSearch = appliedSearch.length > 0;
+
+  /* ── Edit helpers ──────────────────────────────────────────── */
   const openEditModal = (product) => {
     setEditingProduct(product);
     setEditForm({
@@ -84,10 +151,34 @@ export default function Inventory() {
         },
       });
       setEditingProduct(null);
+      setToast({ type: "success", message: "Product updated successfully" });
     } catch (err) {
-      console.error("Failed to update product:", err);
+      setToast({ type: "error", message: `Failed to update: ${err.message}` });
     }
   };
+
+  /* ── Delete helpers ────────────────────────────────────────── */
+  const openDeleteModal = (product) => {
+    setDeletingProduct(product);
+  };
+
+  const handleDeleteProduct = async () => {
+    if (!deletingProduct?.id) return;
+    try {
+      const result = await deleteProduct(deletingProduct.id);
+      const barcodesRemoved =
+        result?.data?.barcodesRemoved ?? result?.barcodesRemoved ?? 0;
+      setDeletingProduct(null);
+      setToast({
+        type: "success",
+        message: `Product and ${barcodesRemoved} barcode(s) deleted successfully`,
+      });
+    } catch (err) {
+      setToast({ type: "error", message: `Delete failed: ${err.message}` });
+    }
+  };
+
+  /* ── Batch form ────────────────────────────────────────────── */
   const [batchForm, setBatchForm] = useState({
     productType: "watch",
     brand: "",
@@ -254,6 +345,48 @@ export default function Inventory() {
         </GlassCard>
       )}
 
+      {/* ── Search / Filter Bar ──────────────────────────────── */}
+      <GlassCard className="!py-3 !px-5">
+        <div className="flex items-center gap-3">
+          <Search size={18} className="text-primary-600 shrink-0" />
+          <input
+            type="text"
+            placeholder="Search by product type, brand, or model…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleApplySearch()}
+            className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40"
+          />
+          <div className="flex gap-2 shrink-0">
+            <GlassButton onClick={handleApplySearch} className="!py-2 !px-4">
+              <Search size={14} />
+              Search
+            </GlassButton>
+            {hasActiveSearch && (
+              <GlassButton
+                variant="secondary"
+                onClick={handleClearSearch}
+                className="!py-2 !px-4"
+              >
+                <X size={14} />
+                Clear
+              </GlassButton>
+            )}
+          </div>
+        </div>
+        {hasActiveSearch && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-primary-700/70">
+            <span>Searching for:</span>
+            <span className="px-2 py-0.5 rounded-full bg-primary-500/10 text-primary-700 font-medium">
+              &ldquo;{appliedSearch}&rdquo;
+            </span>
+            <span className="text-primary-600/50">
+              across type, brand &amp; model
+            </span>
+          </div>
+        )}
+      </GlassCard>
+
       {/* Product catalog table */}
       <GlassCard className="!p-0 overflow-hidden">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-white/30">
@@ -261,6 +394,11 @@ export default function Inventory() {
           <h2 className="font-display font-semibold text-primary-800">
             Product Catalog
           </h2>
+          {hasActiveSearch && (
+            <span className="ml-2 text-xs text-primary-600/70">
+              ({products.length} result{products.length !== 1 ? "s" : ""})
+            </span>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -311,13 +449,15 @@ export default function Inventory() {
                     colSpan={8}
                     className="text-center py-12 text-primary-700/50"
                   >
-                    No products found. Generate a batch to get started.
+                    {hasActiveSearch
+                      ? "No products match your search criteria."
+                      : "No products found. Generate a batch to get started."}
                   </td>
                 </tr>
               ) : (
                 products.map((p, i) => (
                   <tr
-                    key={i}
+                    key={p.id || i}
                     className="border-b border-white/20 hover:bg-white/20 transition-colors"
                   >
                     <td className="px-6 py-3 text-sm text-primary-800">
@@ -351,13 +491,22 @@ export default function Inventory() {
                       </span>
                     </td>
                     <td className="px-6 py-3 text-sm text-center">
-                      <button
-                        onClick={() => openEditModal(p)}
-                        className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
-                        title="Edit Product"
-                      >
-                        <Pencil size={16} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => openEditModal(p)}
+                          className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
+                          title="Edit Product"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => openDeleteModal(p)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
+                          title="Delete Product"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -629,7 +778,9 @@ export default function Inventory() {
             <GlassButton
               onClick={handleUpdateProduct}
               isLoading={isUpdatingProduct}
-              disabled={!editForm?.productType || !editForm?.brand || !editForm?.model}
+              disabled={
+                !editForm?.productType || !editForm?.brand || !editForm?.model
+              }
             >
               Save Changes
             </GlassButton>
@@ -692,6 +843,87 @@ export default function Inventory() {
           </div>
         )}
       </GlassModal>
+
+      {/* ── Delete Confirmation Modal ────────────────────────── */}
+      <GlassModal
+        open={!!deletingProduct}
+        onClose={() => setDeletingProduct(null)}
+        title="Delete Product"
+        footer={
+          <>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setDeletingProduct(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </GlassButton>
+            <GlassButton
+              variant="danger"
+              onClick={handleDeleteProduct}
+              isLoading={isDeleting}
+            >
+              <Trash2 size={16} />
+              Delete Permanently
+            </GlassButton>
+          </>
+        }
+      >
+        {deletingProduct && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50/60 border border-red-200/60">
+              <AlertTriangle
+                className="text-red-500 mt-0.5 shrink-0"
+                size={20}
+              />
+              <div className="text-sm text-red-800">
+                <p className="font-semibold mb-1">
+                  This action is irreversible!
+                </p>
+                <p>
+                  Deleting this product will <strong>permanently remove</strong>{" "}
+                  the product record and{" "}
+                  <strong>all associated barcodes</strong> (including DRAFT,
+                  IN_STOCK, STAGED, and SOLD entries).
+                </p>
+              </div>
+            </div>
+            <div className="glass-card p-4 space-y-2 text-sm">
+              <div className="flex justify-between border-b border-white/20 pb-2">
+                <span className="font-semibold text-primary-800">Product</span>
+                <span className="text-primary-700">
+                  {deletingProduct.brand} {deletingProduct.model}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-white/20 pb-2">
+                <span className="font-semibold text-primary-800">Type</span>
+                <span className="text-primary-700">
+                  {deletingProduct.productType || "—"}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-white/20 pb-2">
+                <span className="font-semibold text-primary-800">
+                  Total Barcodes
+                </span>
+                <span className="text-primary-700">
+                  {deletingProduct.totalUnits || 0}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-primary-800">
+                  Available Stock
+                </span>
+                <span className="text-primary-700">
+                  {deletingProduct.availableUnits || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </GlassModal>
+
+      {/* ── Toast Notification ───────────────────────────────── */}
+      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

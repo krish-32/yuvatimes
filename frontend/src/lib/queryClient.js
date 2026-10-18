@@ -13,6 +13,6 @@ export const queryClient = new QueryClient({
 
 export const inventoryKeys = {
   all: ["inventory"],
-  products: () => [...inventoryKeys.all, "products"],
+  products: (search = '') => [...inventoryKeys.all, "products", search],
   draftBatches: () => [...inventoryKeys.all, "draftBatches"],
 };

@@ -143,12 +143,42 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 
-	res, err := h.Repo.GetProductsSummary(r.Context(), page, limit)
+	// Optional combined search query parameter (searches across type, brand, and model)
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+
+	res, err := h.Repo.GetProductsSummary(r.Context(), page, limit, search)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
+}
+
+func (h *Handler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
+	productID := chi.URLParam(r, "id")
+	if productID == "" {
+		respondError(w, http.StatusBadRequest, "missing product ID")
+		return
+	}
+
+	barcodesRemoved, err := h.Repo.DeleteProduct(r.Context(), productID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{
+		Status:  "success",
+		Message: fmt.Sprintf("Product and %d associated barcodes deleted successfully", barcodesRemoved),
+		Data: map[string]interface{}{
+			"productId":       productID,
+			"barcodesRemoved": barcodesRemoved,
+		},
+	})
 }
 
 func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {

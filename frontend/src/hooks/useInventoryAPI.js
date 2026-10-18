@@ -1,20 +1,21 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { inventoryService } from '../api/apiCalls';
-import { inventoryKeys } from '../lib/queryClient';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { inventoryService } from "../api/apiCalls";
+import { inventoryKeys } from "../lib/queryClient";
 
 /**
  * Custom hooks leveraging TanStack Query for Inventory & Barcode APIs
  */
 
-export function useProducts() {
+export function useProducts(search = '') {
   return useQuery({
-    queryKey: inventoryKeys.products(),
+    queryKey: inventoryKeys.products(search),
     queryFn: async () => {
-      const response = await inventoryService.getProducts();
+      const response = await inventoryService.getProducts(search);
       return Array.isArray(response) ? response : response.data || [];
     },
   });
 }
+
 export function useUpdateProduct() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -22,7 +23,20 @@ export function useUpdateProduct() {
       return await inventoryService.updateProduct(id, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+    },
+  });
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      return await inventoryService.deleteProduct(id);
+    },
+    onSuccess: () => {
+      // Invalidate all inventory queries (products + drafts) since barcodes were cascaded
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     },
   });
 }
@@ -39,7 +53,7 @@ export function useDraftBatches() {
 
 export function useGenerateBatch() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (payload) => {
       return await inventoryService.generateBatch(payload);
@@ -67,9 +81,8 @@ export function useCommitBatch() {
       return await inventoryService.commitBatch(batchId);
     },
     onSuccess: () => {
-      // Invalidate both lists since stock moved from Draft -> In-Stock
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.draftBatches() });
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      // Invalidate all inventory queries (products with any filter + drafts)
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     },
   });
 }

@@ -13,8 +13,12 @@ const generateUUID = () => {
 // INVENTORY & BARCODE MANAGEMENT
 // ==========================================
 export const inventoryService = {
-  getProducts: () => api.get('/api/inventory/products'),
+  getProducts: (search = '') => {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    return api.get(`/api/inventory/products${qs}`);
+  },
   updateProduct: (id, payload) => api.put(`/api/inventory/products/${id}`, payload),
+  deleteProduct: (id) => api.delete(`/api/inventory/products/${id}`),
   getDraftBatches: () => api.get('/api/inventory/barcode-batches/drafts'),
   generateBatch: (payload) => api.post('/api/inventory/barcode-batches', payload),
   printZpl: (payload) => api.post('/api/v1/barcodes/print-zpl', payload),

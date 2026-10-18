@@ -48,6 +48,11 @@ func NewRepository(dbPath, tursoURL, tursoAuthToken string) (*Repository, error)
 		db.SetMaxOpenConns(1)
 	}
 
+	// Enable foreign key enforcement (required for SQLite ON DELETE CASCADE)
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	repo := &Repository{DB: db}
 	if err := repo.initSchema(); err != nil {
 		return nil, err
@@ -82,6 +87,10 @@ func (r *Repository) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_batch ON barcodes(batch_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_product ON barcodes(product_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_status ON barcodes(status);`,
+		// Indexes for multi-criteria search on products
+		`CREATE INDEX IF NOT EXISTS idx_products_type ON products(product_type);`,
+		`CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);`,
+		`CREATE INDEX IF NOT EXISTS idx_products_model ON products(model);`,
 	}
 	for _, q := range queries {
 		if _, err := r.DB.Exec(q); err != nil {
@@ -247,16 +256,31 @@ func (r *Repository) CheckSerialExists(ctx context.Context, serial string) (bool
 	return true, nil
 }
 
-func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int) ([]map[string]interface{}, error) {
-	query := `
+func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int, search string) ([]map[string]interface{}, error) {
+	baseQuery := `
 		SELECT p.id, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
 			COUNT(b.serial) as total_units,
 			SUM(CASE WHEN b.status = 'IN_STOCK' THEN 1 ELSE 0 END) as available_units
 		FROM products p
 		LEFT JOIN barcodes b ON p.id = b.product_id
-		GROUP BY p.id LIMIT ? OFFSET ?
 	`
-	rows, err := r.DB.QueryContext(ctx, query, limit, (page-1)*limit)
+
+	var args []interface{}
+
+	if search != "" {
+		baseQuery += ` WHERE (
+			p.product_type LIKE ? COLLATE NOCASE
+			OR p.brand LIKE ? COLLATE NOCASE
+			OR p.model LIKE ? COLLATE NOCASE
+		)`
+		wildcard := "%" + search + "%"
+		args = append(args, wildcard, wildcard, wildcard)
+	}
+
+	baseQuery += " GROUP BY p.id ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, (page-1)*limit)
+
+	rows, err := r.DB.QueryContext(ctx, baseQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +321,47 @@ func (r *Repository) UpdateProduct(ctx context.Context, id, pType, brand, model 
 		return fmt.Errorf("product not found")
 	}
 	return nil
+}
+
+// DeleteProduct removes a product and all its associated barcodes in a single atomic transaction.
+// The ON DELETE CASCADE FK constraint handles barcode cleanup, but we wrap in a transaction
+// and re-enable foreign_keys to ensure consistency.
+func (r *Repository) DeleteProduct(ctx context.Context, id string) (int64, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	// Ensure FK enforcement is on within this transaction
+	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
+		return 0, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
+	// Count associated barcodes before deletion (for informational response)
+	var barcodeCount int64
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM barcodes WHERE product_id = ?", id).Scan(&barcodeCount)
+	if err != nil {
+		return 0, err
+	}
+
+	// Delete the product — ON DELETE CASCADE will remove all linked barcodes
+	res, err := tx.ExecContext(ctx, "DELETE FROM products WHERE id = ?", id)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if affected == 0 {
+		return 0, fmt.Errorf("product not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return barcodeCount, nil
 }
 
 func (r *Repository) SearchBarcode(ctx context.Context, barcode string) (map[string]interface{}, error) {
