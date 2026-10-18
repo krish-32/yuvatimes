@@ -59,6 +59,9 @@ export const salesService = {
     link.click();
     link.remove();
     
+    // Revoke the object URL to free memory
+    window.URL.revokeObjectURL(url);
+    
     return true;
   }
 };

@@ -3,10 +3,10 @@ import { QueryClient } from "@tanstack/react-query";
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: Infinity, // Data remains fresh until hard reload
-      gcTime: Infinity, // Data is never garbage collected from memory
-      refetchOnWindowFocus: false, // Don't refetch on tab switch unless stale
-      retry: 3, // Only retry failed requests once
+      staleTime: 5 * 60 * 1000, // 5 min — data is fresh for this period before a refetch is triggered
+      gcTime: 10 * 60 * 1000, // 10 min — unused cache entries are garbage collected after this
+      refetchOnWindowFocus: false, // Don't refetch on tab switch
+      retry: 2, // Retry failed requests twice (3 total attempts)
     },
   },
 });

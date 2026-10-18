@@ -49,26 +49,53 @@ func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid metadata or quantity")
 		return
 	}
+	if req.Quantity > 500 {
+		respondError(w, http.StatusBadRequest, "quantity must not exceed 500")
+		return
+	}
+	if len(req.ProductType) > 100 || len(req.Brand) > 100 || len(req.Model) > 200 {
+		respondError(w, http.StatusBadRequest, "field values exceed maximum length")
+		return
+	}
 
 	batchID := uuid.New().String()
-	var barcodes []string
-	var resBarcodes []map[string]interface{}
 
-	for i := 0; i < req.Quantity; i++ {
-		var serial string
-		for {
-			uid := strings.Split(uuid.New().String(), "-")[0]
-			serial = strings.ToUpper(uid)
-			exists, err := h.Repo.CheckSerialExists(r.Context(), serial)
-			if err != nil {
-				respondError(w, http.StatusInternalServerError, "database error checking serial uniqueness")
-				return
-			}
-			if !exists {
-				break
+	// Generate all candidate serials in memory first (no DB calls)
+	barcodes := make([]string, 0, req.Quantity)
+	seen := make(map[string]bool, req.Quantity)
+	for len(barcodes) < req.Quantity {
+		uid := strings.ToUpper(strings.Split(uuid.New().String(), "-")[0])
+		if !seen[uid] {
+			seen[uid] = true
+			barcodes = append(barcodes, uid)
+		}
+	}
+
+	// Single batch DB query to check for collisions, then regenerate any conflicts
+	existing, err := h.Repo.FilterExistingSerials(r.Context(), barcodes)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "database error checking serial uniqueness")
+		return
+	}
+	if len(existing) > 0 {
+		// Replace colliding serials with fresh ones
+		for i := range barcodes {
+			if existing[barcodes[i]] {
+				delete(seen, barcodes[i])
+				for {
+					candidate := strings.ToUpper(strings.Split(uuid.New().String(), "-")[0])
+					if !seen[candidate] && !existing[candidate] {
+						barcodes[i] = candidate
+						seen[candidate] = true
+						break
+					}
+				}
 			}
 		}
-		barcodes = append(barcodes, serial)
+	}
+
+	resBarcodes := make([]map[string]interface{}, 0, req.Quantity)
+	for _, serial := range barcodes {
 		resBarcodes = append(resBarcodes, map[string]interface{}{
 			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,
 		})
@@ -145,6 +172,9 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 
 	// Optional combined search query parameter (searches across type, brand, and model)
 	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	if len(search) > 100 {
+		search = search[:100]
+	}
 
 	res, err := h.Repo.GetProductsSummary(r.Context(), page, limit, search)
 	if err != nil {
@@ -202,6 +232,10 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 
 	if req.ProductType == "" || req.Brand == "" || req.Model == "" {
 		respondError(w, http.StatusBadRequest, "type, brand, and model are required")
+		return
+	}
+	if len(req.ProductType) > 100 || len(req.Brand) > 100 || len(req.Model) > 200 {
+		respondError(w, http.StatusBadRequest, "field values exceed maximum length")
 		return
 	}
 
@@ -334,7 +368,7 @@ func (h *Handler) GetSales(w http.ResponseWriter, r *http.Request) {
 
 	records, err := h.Repo.GetSalesRecords(r.Context(), limit, offset)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "failed to fetch sales records")
 		return
 	}
 	
@@ -357,7 +391,7 @@ func (h *Handler) GetSales(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
 	records, err := h.Repo.ExportAndPurgeSales(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "failed to export sales")
 		return
 	}
 

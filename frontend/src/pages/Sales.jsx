@@ -2,7 +2,7 @@ import { useInfiniteSales, useExportAndPurgeSales } from '../hooks/useSalesAPI';
 import GlassCard from '../components/GlassCard';
 import GlassButton from '../components/GlassButton';
 import { History, Download, Loader2, Package, Tag, Hash, Clock, CircleDollarSign } from 'lucide-react';
-import React, { Fragment } from 'react';
+import { Fragment } from 'react';
 
 export default function Sales() {
   const {

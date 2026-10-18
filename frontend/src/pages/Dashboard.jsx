@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Package,
@@ -8,32 +8,28 @@ import {
   ArrowRight,
   Clock,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { useProducts } from "../hooks/useInventoryAPI";
-import { Loader2 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 
 export default function Dashboard() {
-  const { data: products = [], isLoading: loadingProducts, error: loadError } = useProducts();
+  const {
+    data: products = [],
+    isLoading: loadingProducts,
+    error: loadError,
+  } = useProducts();
 
-  // Derive stats from catalog data
-  const totalProducts = products.length;
-  const totalUnits = products.reduce(
-    (sum, p) => sum + (p.totalUnits || p.total || 0),
-    0,
-  );
-  const availableUnits = products.reduce(
-    (sum, p) => sum + (p.availableUnits || p.available || 0),
-    0,
-  );
-  const totalValue = products.reduce(
-    (sum, p) =>
-      sum + (p.sellingPrice || 0) * (p.availableUnits || p.available || 0),
-    0,
-  );
-  const lowStock = products.filter(
-    (p) => (p.availableUnits || p.available || 0) <= 5,
-  );
+  // Derive stats from catalog data (memoized to avoid re-computation on unrelated re-renders)
+  const { totalProducts, totalUnits, availableUnits, totalValue } = useMemo(() => {
+    let units = 0, avail = 0, value = 0;
+    for (const p of products) {
+      units += p.totalUnits || p.total || 0;
+      avail += p.availableUnits || p.available || 0;
+      value += (p.sellingPrice || 0) * (p.availableUnits || p.available || 0);
+    }
+    return { totalProducts: products.length, totalUnits: units, availableUnits: avail, totalValue: value };
+  }, [products]);
 
   const stats = [
     {

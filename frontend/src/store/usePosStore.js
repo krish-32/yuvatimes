@@ -39,7 +39,7 @@ const createNewSession = () => ({
  */
 export const usePosStore = create(
   persist(
-    (set, get) => {
+    (set) => {
       const initialSession = createNewSession();
       
       return {

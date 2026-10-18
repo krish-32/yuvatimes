@@ -87,6 +87,10 @@ func (r *Repository) initSchema() error {
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_batch ON barcodes(batch_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_product ON barcodes(product_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_barcodes_status ON barcodes(status);`,
+		// Composite index for sales queries: WHERE status='SOLD' ORDER BY sold_at DESC
+		`CREATE INDEX IF NOT EXISTS idx_barcodes_status_sold_at ON barcodes(status, sold_at);`,
+		// Index for cart/staging queries filtering by checkout_session_id
+		`CREATE INDEX IF NOT EXISTS idx_barcodes_session ON barcodes(checkout_session_id);`,
 		// Indexes for multi-criteria search on products
 		`CREATE INDEX IF NOT EXISTS idx_products_type ON products(product_type);`,
 		`CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);`,
@@ -153,9 +157,9 @@ func (r *Repository) CommitBatch(ctx context.Context, batchID string) (map[strin
 	}
 	defer tx.Rollback()
 
-	var productID string
-	var createdAt time.Time
-	err = tx.QueryRowContext(ctx, "SELECT product_id, created_at FROM barcodes WHERE batch_id = ? LIMIT 1", batchID).Scan(&productID, &createdAt)
+	// Verify batch existence with minimal column scan
+	var dummy int
+	err = tx.QueryRowContext(ctx, "SELECT 1 FROM barcodes WHERE batch_id = ? LIMIT 1", batchID).Scan(&dummy)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("batch not found")
@@ -225,20 +229,32 @@ func (r *Repository) RevertBatch(ctx context.Context, batchID string) error {
 	}
 	defer tx.Rollback()
 
-	res, err := tx.ExecContext(ctx, "DELETE FROM barcodes WHERE batch_id = ? AND status = 'DRAFT'", batchID)
+	// Capture the product_id before deleting, so we can target orphan cleanup
+	var productID string
+	err = tx.QueryRowContext(ctx, "SELECT product_id FROM barcodes WHERE batch_id = ? AND status = 'DRAFT' LIMIT 1", batchID).Scan(&productID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("no draft records found for batch or batch already committed")
+		}
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM barcodes WHERE batch_id = ? AND status = 'DRAFT'", batchID)
 	if err != nil {
 		return err
 	}
 
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return fmt.Errorf("no draft records found for batch or batch already committed")
-	}
-
-	// Clean up orphaned products
-	_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id NOT IN (SELECT DISTINCT product_id FROM barcodes)")
+	// Targeted orphan cleanup: only check the specific product that was affected
+	var remaining int
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM barcodes WHERE product_id = ?", productID).Scan(&remaining)
 	if err != nil {
 		return err
+	}
+	if remaining == 0 {
+		_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id = ?", productID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()
@@ -256,6 +272,36 @@ func (r *Repository) CheckSerialExists(ctx context.Context, serial string) (bool
 	return true, nil
 }
 
+// FilterExistingSerials returns the subset of serials that already exist in the database.
+// Uses a single batch query instead of N individual checks.
+func (r *Repository) FilterExistingSerials(ctx context.Context, serials []string) (map[string]bool, error) {
+	if len(serials) == 0 {
+		return map[string]bool{}, nil
+	}
+	placeholders := make([]string, len(serials))
+	args := make([]interface{}, len(serials))
+	for i, s := range serials {
+		placeholders[i] = "?"
+		args[i] = s
+	}
+	query := "SELECT serial FROM barcodes WHERE serial IN (" + strings.Join(placeholders, ",") + ")"
+	rows, err := r.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		existing[s] = true
+	}
+	return existing, nil
+}
+
 func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int, search string) ([]map[string]interface{}, error) {
 	baseQuery := `
 		SELECT p.id, p.product_type, p.brand, p.model, p.purchase_price, p.selling_price,
@@ -268,12 +314,14 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int, se
 	var args []interface{}
 
 	if search != "" {
+		// Escape SQL LIKE wildcard characters in user input to prevent wildcard injection
+		escaped := strings.NewReplacer("%", "\\%", "_", "\\_").Replace(search)
 		baseQuery += ` WHERE (
-			p.product_type LIKE ? COLLATE NOCASE
-			OR p.brand LIKE ? COLLATE NOCASE
-			OR p.model LIKE ? COLLATE NOCASE
+			p.product_type LIKE ? ESCAPE '\' COLLATE NOCASE
+			OR p.brand LIKE ? ESCAPE '\' COLLATE NOCASE
+			OR p.model LIKE ? ESCAPE '\' COLLATE NOCASE
 		)`
-		wildcard := "%" + search + "%"
+		wildcard := "%" + escaped + "%"
 		args = append(args, wildcard, wildcard, wildcard)
 	}
 
@@ -286,7 +334,7 @@ func (r *Repository) GetProductsSummary(ctx context.Context, page, limit int, se
 	}
 	defer rows.Close()
 
-	var results []map[string]interface{}
+	results := make([]map[string]interface{}, 0, 16)
 	for rows.Next() {
 		var id, pType, brand, model string
 		var pPrice, sPrice float64
@@ -332,11 +380,6 @@ func (r *Repository) DeleteProduct(ctx context.Context, id string) (int64, error
 		return 0, err
 	}
 	defer tx.Rollback()
-
-	// Ensure FK enforcement is on within this transaction
-	if _, err := tx.ExecContext(ctx, "PRAGMA foreign_keys = ON"); err != nil {
-		return 0, fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
 
 	// Count associated barcodes before deletion (for informational response)
 	var barcodeCount int64

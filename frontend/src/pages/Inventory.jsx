@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   Package,
   Plus,
@@ -31,8 +31,8 @@ import {
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
-/* ── Tiny inline toast ─────────────────────────────────────────── */
-function Toast({ toast, onDismiss }) {
+/* ── Tiny inline toast (memoized to avoid re-renders from parent state changes) */
+const Toast = memo(function Toast({ toast, onDismiss }) {
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(onDismiss, 4000);
@@ -66,7 +66,7 @@ function Toast({ toast, onDismiss }) {
       </div>
     </div>
   );
-}
+});
 
 export default function Inventory() {
   /* ── Existing query hooks ──────────────────────────────────── */
@@ -113,15 +113,26 @@ export default function Inventory() {
   const [toast, setToast] = useState(null);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  /* ── Search handlers ───────────────────────────────────────── */
-  const handleApplySearch = () => {
-    setAppliedSearch(searchInput.trim());
-  };
+  /* ── Search handlers with debounce ─────────────────────────── */
+  const debounceRef = useRef(null);
 
-  const handleClearSearch = () => {
+  const handleApplySearch = useCallback(() => {
+    setAppliedSearch(searchInput.trim());
+  }, [searchInput]);
+
+  // Debounce: auto-trigger search 400ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setAppliedSearch(searchInput.trim());
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
+
+  const handleClearSearch = useCallback(() => {
     setSearchInput("");
     setAppliedSearch("");
-  };
+  }, []);
 
   const hasActiveSearch = appliedSearch.length > 0;
 
@@ -212,7 +223,6 @@ export default function Inventory() {
       };
       const response = await generateBatch(payload);
       const data = response.data || response;
-      console.log(data);
 
       const rawSerials = data.serials || data.barcodes || [];
       const serialList = rawSerials.map((b) =>
@@ -355,6 +365,7 @@ export default function Inventory() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleApplySearch()}
+            maxLength={100}
             className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40"
           />
           <div className="flex gap-2 shrink-0">

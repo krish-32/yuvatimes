@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, ShoppingCart, AlertCircle } from 'lucide-react';
+import { Plus, X, AlertCircle } from 'lucide-react';
 import { usePosStore } from '../store/usePosStore';
 import GlassModal from './GlassModal';
 import GlassButton from './GlassButton';

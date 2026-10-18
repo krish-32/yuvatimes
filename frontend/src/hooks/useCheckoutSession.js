@@ -47,7 +47,7 @@ export function useCheckoutSession(sessionId) {
     try {
       const data = await posService.scanItem(sessionId, serial);
       await fetchItems();
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
       return data;
     } catch (err) {
       setError(err.message);
@@ -64,7 +64,7 @@ export function useCheckoutSession(sessionId) {
     try {
       await posService.removeItem(sessionId, serial);
       await fetchItems();
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     } catch (err) {
       setError(err.message);
       throw err;
@@ -80,7 +80,7 @@ export function useCheckoutSession(sessionId) {
     try {
       const data = await posService.completeCheckout(sessionId, discountAmount);
       clearSessionItems(sessionId);
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
       queryClient.resetQueries({ queryKey: ['sales'] });
       return data;
     } catch (err) {
