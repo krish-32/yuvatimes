@@ -39,7 +39,7 @@ export default function PosCartList({ items, loading, onRemove }) {
             </div>
             <div className="text-right">
               <div className="font-semibold text-primary-800">
-                ₹{item.sellingPrice || item.price}
+                ₹{(item.sellingPrice || item.price || 0).toFixed(2)}
               </div>
             </div>
             <button

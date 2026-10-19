@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
-import { CheckCircle2, AlertCircle, Receipt } from "lucide-react";
+import { CheckCircle2, Receipt } from "lucide-react";
 
 import GlassCard from "../components/GlassCard";
 import GlassButton from "../components/GlassButton";
+import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 import GlassModal from "../components/GlassModal";
 import PosTabs from "../components/PosTabs";
 import PosScanner from "../components/PosScanner";
@@ -118,12 +119,13 @@ export default function POS() {
 
       {/* Error banner */}
       {error && (
-        <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
-          <div className="flex items-center gap-3 text-secondary-700">
-            <AlertCircle size={20} />
-            <span className="text-sm font-medium">{error}</span>
-          </div>
-        </GlassCard>
+        <ErrorDisplay
+          status={getErrorType(error instanceof Error ? error : new Error(error))}
+          errorMessage={typeof error === "string" ? error : error?.message}
+          onRetry={() => window.location.reload()}
+          showHomeButton={false}
+          showBackButton={false}
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

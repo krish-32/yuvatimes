@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { WifiOff, Wifi, X } from "lucide-react";
 
 /**
@@ -9,12 +9,21 @@ export default function NetworkStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showReconnected, setShowReconnected] = useState(false);
   const [wasOffline, setWasOffline] = useState(false);
+  const reconnectTimerRef = useRef(null);
+
+  // Cleanup reconnection timer on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    };
+  }, []);
 
   const handleOnline = useCallback(() => {
     setIsOnline(true);
     if (wasOffline) {
       setShowReconnected(true);
-      setTimeout(() => setShowReconnected(false), 3000);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = setTimeout(() => setShowReconnected(false), 3000);
     }
   }, [wasOffline]);
 

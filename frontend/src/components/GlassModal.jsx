@@ -9,6 +9,7 @@ export default function GlassModal({
   footer,
   size = "md",
 }) {
+  // Escape key listener
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
@@ -17,6 +18,16 @@ export default function GlassModal({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, onClose]);
+
+  // Lock body scroll when modal is open to prevent background scrolling
+  useEffect(() => {
+    if (!open) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [open]);
 
   if (!open) return null;
 
