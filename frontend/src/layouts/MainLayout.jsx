@@ -32,8 +32,10 @@ export default function MainLayout() {
     <div className="min-h-screen flex">
       {/* Mobile overlay */}
       {sidebarOpen && isMobile && (
-        <div
-          className="fixed inset-0 z-30 bg-primary-900/20 backdrop-blur-sm lg:hidden"
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className="fixed inset-0 z-30 border-0 bg-primary-900/20 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}

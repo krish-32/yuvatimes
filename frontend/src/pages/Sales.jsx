@@ -1,8 +1,17 @@
-import { useInfiniteSales, useExportAndPurgeSales } from '../hooks/useSalesAPI';
-import GlassCard from '../components/GlassCard';
-import GlassButton from '../components/GlassButton';
-import { History, Download, Loader2, Package, Tag, Hash, Clock, CircleDollarSign } from 'lucide-react';
-import { Fragment } from 'react';
+import { useInfiniteSales, useExportAndPurgeSales } from "../hooks/useSalesAPI";
+import GlassCard from "../components/GlassCard";
+import GlassButton from "../components/GlassButton";
+import {
+  History,
+  Download,
+  Loader2,
+  Package,
+  Tag,
+  Hash,
+  Clock,
+  CircleDollarSign,
+} from "lucide-react";
+import { Fragment } from "react";
 
 export default function Sales() {
   const {
@@ -15,7 +24,8 @@ export default function Sales() {
     isFetchingNextPage,
   } = useInfiniteSales();
 
-  const { mutateAsync: exportAndPurge, isPending: isExporting } = useExportAndPurgeSales();
+  const { mutateAsync: exportAndPurge, isPending: isExporting } =
+    useExportAndPurgeSales();
 
   const handleExport = async () => {
     try {
@@ -25,6 +35,69 @@ export default function Sales() {
       alert("Failed to export sales: " + err.message);
     }
   };
+
+  /* ── Sales table body (avoids nested ternary – SonarQube S3358) ── */
+  const isEmpty = !data || data.pages[0].data.length === 0;
+
+  let salesRows;
+  if (isLoading) {
+    salesRows = (
+      <tr>
+        <td colSpan={6} className="py-12 text-center text-primary-700/50">
+          <Loader2 className="animate-spin mx-auto mb-2" size={24} />
+          Loading sales records...
+        </td>
+      </tr>
+    );
+  } else if (isEmpty) {
+    salesRows = (
+      <tr>
+        <td colSpan={6} className="py-16 text-center text-primary-700/40">
+          <History size={40} className="mx-auto mb-3 opacity-50" />
+          <p className="text-sm">No sales records found.</p>
+        </td>
+      </tr>
+    );
+  } else {
+    salesRows = data.pages.map((page, i) => (
+      <Fragment key={i}>
+        {page.data.map((sale) => (
+          <tr
+            key={sale.serial}
+            className="hover:bg-white/20 transition-colors"
+          >
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-800">
+              {new Date(sale.soldAt).toLocaleString()}
+            </td>
+            <td className="px-6 py-4">
+              <div className="flex flex-col">
+                <span className="font-semibold text-primary-800">
+                  {sale.brand} {sale.model}
+                </span>
+                <span className="text-xs text-primary-700/60 uppercase tracking-wider">
+                  {sale.productType}
+                </span>
+              </div>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap">
+              <span className="font-mono text-sm text-primary-800 bg-primary-900/5 px-2 py-1 rounded">
+                {sale.serial}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary-700/60">
+              {sale.sessionId}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-700/60 line-through">
+              ₹{sale.sellingPrice.toFixed(2)}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-primary-800">
+              ₹{sale.soldPrice ? sale.soldPrice.toFixed(2) : sale.sellingPrice.toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </Fragment>
+    ));
+  }
 
   return (
     <div className="space-y-6">
@@ -38,9 +111,9 @@ export default function Sales() {
             View completed transactions and export records
           </p>
         </div>
-        
-        <GlassButton 
-          onClick={handleExport} 
+
+        <GlassButton
+          onClick={handleExport}
           isLoading={isExporting}
           variant="primary"
           className="bg-accent-600 hover:bg-accent-500 text-white"
@@ -64,92 +137,52 @@ export default function Sales() {
             Sold Items
           </h2>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/30">
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><Clock size={14} /> Sold At</div>
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={14} /> Sold At
+                  </div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><Package size={14} /> Item</div>
+                  <div className="flex items-center gap-1.5">
+                    <Package size={14} /> Item
+                  </div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><Tag size={14} /> Serial</div>
+                  <div className="flex items-center gap-1.5">
+                    <Tag size={14} /> Serial
+                  </div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><Hash size={14} /> Session ID</div>
+                  <div className="flex items-center gap-1.5">
+                    <Hash size={14} /> Session ID
+                  </div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><CircleDollarSign size={14} /> Actual Price</div>
+                  <div className="flex items-center gap-1.5">
+                    <CircleDollarSign size={14} /> Actual Price
+                  </div>
                 </th>
                 <th className="text-left text-xs font-semibold text-primary-700/60 uppercase tracking-wide px-6 py-3">
-                  <div className="flex items-center gap-1.5"><CircleDollarSign size={14} /> Sold Price</div>
+                  <div className="flex items-center gap-1.5">
+                    <CircleDollarSign size={14} /> Sold Price
+                  </div>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/20">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-primary-700/50">
-                    <Loader2 className="animate-spin mx-auto mb-2" size={24} />
-                    Loading sales records...
-                  </td>
-                </tr>
-              ) : !data || data.pages[0].data.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-16 text-center text-primary-700/40">
-                    <History size={40} className="mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">No sales records found.</p>
-                  </td>
-                </tr>
-              ) : (
-                data.pages.map((page, i) => (
-                  <Fragment key={i}>
-                    {page.data.map((sale) => (
-                      <tr key={sale.serial} className="hover:bg-white/20 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-800">
-                          {new Date(sale.soldAt).toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-primary-800">
-                              {sale.brand} {sale.model}
-                            </span>
-                            <span className="text-xs text-primary-700/60 uppercase tracking-wider">
-                              {sale.productType}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-mono text-sm text-primary-800 bg-primary-900/5 px-2 py-1 rounded">
-                            {sale.serial}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary-700/60">
-                          {sale.sessionId}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-700/60 line-through">
-                          ₹{sale.sellingPrice.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-primary-800">
-                          ₹{sale.soldPrice ? sale.soldPrice.toFixed(2) : sale.sellingPrice.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))
-              )}
-            </tbody>
+            <tbody className="divide-y divide-white/20">{salesRows}</tbody>
           </table>
         </div>
-        
+
         {/* Load More Button */}
         {hasNextPage && (
           <div className="p-4 flex justify-center border-t border-white/30">
-            <GlassButton 
-              variant="secondary" 
+            <GlassButton
+              variant="secondary"
               onClick={() => fetchNextPage()}
               isLoading={isFetchingNextPage}
             >

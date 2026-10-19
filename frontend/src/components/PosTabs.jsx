@@ -1,13 +1,19 @@
-import { useState } from 'react';
-import { Plus, X, AlertCircle } from 'lucide-react';
-import { usePosStore } from '../store/usePosStore';
-import GlassModal from './GlassModal';
-import GlassButton from './GlassButton';
-import { posService } from '../api/apiCalls';
-import { queryClient, inventoryKeys } from '../lib/queryClient';
+import { useState } from "react";
+import { Plus, X, AlertCircle } from "lucide-react";
+import { usePosStore } from "../store/usePosStore";
+import GlassModal from "./GlassModal";
+import GlassButton from "./GlassButton";
+import { posService } from "../api/apiCalls";
+import { queryClient, inventoryKeys } from "../lib/queryClient";
 
 export default function PosTabs() {
-  const { sessions, activeSessionId, addSession, setActiveSession, removeSession } = usePosStore();
+  const {
+    sessions,
+    activeSessionId,
+    addSession,
+    setActiveSession,
+    removeSession,
+  } = usePosStore();
   const [tabToRemove, setTabToRemove] = useState(null);
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -26,7 +32,9 @@ export default function PosTabs() {
       try {
         // Release items back to inventory before closing the tab
         await Promise.all(
-          tabToRemove.items.map(item => posService.removeItem(tabToRemove.id, item.serial || item.barcode))
+          tabToRemove.items.map((item) =>
+            posService.removeItem(tabToRemove.id, item.serial || item.barcode),
+          ),
         );
       } catch (err) {
         console.error("Failed to release items back to inventory", err);
@@ -42,21 +50,35 @@ export default function PosTabs() {
   return (
     <div className="w-full">
       {/* Horizontal Scrollable Tab Bar */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+      <div
+        className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin"
+        role="tablist"
+        aria-label="POS sessions"
+      >
         {sessions.map((session, index) => {
           const isActive = session.id === activeSessionId;
           const itemCount = session.items.length;
-          
+
           return (
             <div
               key={session.id}
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
               onClick={() => setActiveSession(session.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setActiveSession(session.id);
+                }
+              }}
               className={`
                 group relative flex items-center gap-3 min-w-[160px] max-w-[220px] px-4 py-3 rounded-t-xl 
                 cursor-pointer transition-all duration-200 border-b-2
-                ${isActive 
-                  ? 'bg-primary-900/40 border-primary-500 shadow-[0_-4px_12px_rgba(0,0,0,0.1)] text-white' 
-                  : 'bg-primary-900/10 border-transparent text-primary-700/70 hover:bg-primary-900/20 hover:text-primary-800'
+                ${
+                  isActive
+                    ? "bg-primary-900/40 border-primary-500 shadow-[0_-4px_12px_rgba(0,0,0,0.1)] text-white"
+                    : "bg-primary-900/10 border-transparent text-primary-700/70 hover:bg-primary-900/20 hover:text-primary-800"
                 }
               `}
             >
@@ -64,22 +86,24 @@ export default function PosTabs() {
                 <span className="text-sm font-semibold truncate">
                   Session {index + 1}
                 </span>
-                <span className={`text-xs ${isActive ? 'text-primary-100' : 'text-primary-700/50'}`}>
-                  {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                <span
+                  className={`text-xs ${isActive ? "text-primary-100" : "text-primary-700/50"}`}
+                >
+                  {itemCount} {itemCount === 1 ? "item" : "items"}
                 </span>
               </div>
-              
+
               <button
                 onClick={(e) => handleRemoveClick(e, session)}
                 className={`
                   p-1 rounded-full transition-colors 
-                  ${isActive ? 'hover:bg-primary-500/50 text-white/70 hover:text-white' : 'hover:bg-primary-800/20 text-primary-800/40 hover:text-primary-800'}
+                  ${isActive ? "hover:bg-primary-500/50 text-white/70 hover:text-white" : "hover:bg-primary-800/20 text-primary-800/40 hover:text-primary-800"}
                 `}
                 title="Close Tab"
               >
                 <X size={14} />
               </button>
-              
+
               {/* Active Tab indicator highlight at the bottom */}
               {isActive && (
                 <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary-400 blur-[1px]" />
@@ -87,7 +111,7 @@ export default function PosTabs() {
             </div>
           );
         })}
-        
+
         {/* Add Tab Button */}
         <button
           onClick={addSession}
@@ -105,10 +129,18 @@ export default function PosTabs() {
         title="Close Active Session?"
         footer={
           <>
-            <GlassButton variant="secondary" onClick={() => setTabToRemove(null)} disabled={isRemoving}>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setTabToRemove(null)}
+              disabled={isRemoving}
+            >
               Cancel
             </GlassButton>
-            <GlassButton variant="danger" onClick={confirmRemove} isLoading={isRemoving}>
+            <GlassButton
+              variant="danger"
+              onClick={confirmRemove}
+              isLoading={isRemoving}
+            >
               Yes, Close Session
             </GlassButton>
           </>
@@ -123,7 +155,9 @@ export default function PosTabs() {
               Warning: Items in Cart
             </h4>
             <p className="text-sm text-primary-700/70">
-              This session currently has items scanned into its cart. If you close this tab, the session will be discarded and you will lose this progress. Are you sure?
+              This session currently has items scanned into its cart. If you
+              close this tab, the session will be discarded and you will lose
+              this progress. Are you sure?
             </p>
           </div>
         </div>

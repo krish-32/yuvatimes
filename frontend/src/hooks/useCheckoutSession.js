@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
-import { posService } from '../api/apiCalls';
-import { usePosStore } from '../store/usePosStore';
-import { queryClient, inventoryKeys } from '../lib/queryClient';
+import { useState, useCallback } from "react";
+import { posService } from "../api/apiCalls";
+import { usePosStore } from "../store/usePosStore";
+import { queryClient, inventoryKeys } from "../lib/queryClient";
 
 /**
  * Hook for POS checkout session management integrating with Zustand multi-session store.
@@ -14,10 +14,10 @@ export function useCheckoutSession(sessionId) {
   // Grab the sync actions from our store
   const syncItems = usePosStore((state) => state.syncItems);
   const clearSessionItems = usePosStore((state) => state.clearSessionItems);
-  
+
   // Grab the items for THIS specific session
   const items = usePosStore(
-    (state) => state.sessions.find((s) => s.id === sessionId)?.items || []
+    (state) => state.sessions.find((s) => s.id === sessionId)?.items || [],
   );
 
   const fetchItems = useCallback(async () => {
@@ -28,9 +28,9 @@ export function useCheckoutSession(sessionId) {
       const response = await posService.getCartItems(sessionId);
       const data = response.data || response;
       const fetchedItems = Array.isArray(data) ? data : data.items || [];
-      const flattenedItems = fetchedItems.map(item => ({
+      const flattenedItems = fetchedItems.map((item) => ({
         ...item,
-        ...(item.product || {})
+        ...(item.product || {}),
       }));
       syncItems(sessionId, flattenedItems);
     } catch (err) {
@@ -40,56 +40,68 @@ export function useCheckoutSession(sessionId) {
     }
   }, [sessionId, syncItems]);
 
-  const scanItem = useCallback(async (serial) => {
-    if (!sessionId || !serial) return null;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await posService.scanItem(sessionId, serial);
-      await fetchItems();
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, fetchItems]);
+  const scanItem = useCallback(
+    async (serial) => {
+      if (!sessionId || !serial) return null;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await posService.scanItem(sessionId, serial);
+        await fetchItems();
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        return data;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId, fetchItems],
+  );
 
-  const removeItem = useCallback(async (serial) => {
-    if (!sessionId || !serial) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await posService.removeItem(sessionId, serial);
-      await fetchItems();
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId, fetchItems]);
+  const removeItem = useCallback(
+    async (serial) => {
+      if (!sessionId || !serial) return;
+      setLoading(true);
+      setError(null);
+      try {
+        await posService.removeItem(sessionId, serial);
+        await fetchItems();
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sessionId, fetchItems],
+  );
 
-  const completeCheckout = useCallback(async (discountAmount = 0) => {
-    if (!sessionId) return null;
-    setCompleting(true);
-    setError(null);
-    try {
-      const data = await posService.completeCheckout(sessionId, discountAmount);
-      clearSessionItems(sessionId);
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-      queryClient.resetQueries({ queryKey: ['sales'] });
-      return data;
-    } catch (err) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setCompleting(false);
-    }
-  }, [sessionId, clearSessionItems]);
+  const completeCheckout = useCallback(
+    async (discountAmount = 0) => {
+      if (!sessionId) return null;
+      setCompleting(true);
+      setError(null);
+      try {
+        const data = await posService.completeCheckout(
+          sessionId,
+          discountAmount,
+        );
+        clearSessionItems(sessionId);
+        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        await queryClient.resetQueries({ queryKey: ["sales"] });
+        return data;
+      } catch (err) {
+        setError(err.message);
+        throw err;
+      } finally {
+        setCompleting(false);
+      }
+    },
+    [sessionId, clearSessionItems],
+  );
 
   return {
     items,
