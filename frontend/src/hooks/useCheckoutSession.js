@@ -47,18 +47,18 @@ export function useCheckoutSession(sessionId) {
       setError(null);
       try {
         const data = await posService.scanItem(sessionId, serial);
-        // Run cart refresh + cache invalidations in parallel to avoid serial round-trips
-        await Promise.all([
+        // Fire-and-forget: refresh cart + invalidate caches in background for faster perceived performance.
+        // The stage API already succeeded — the UI can respond immediately while background sync completes.
+        Promise.all([
           fetchItems(),
           queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
           queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
-        ]);
+        ]).catch(() => {}).finally(() => setLoading(false));
         return data;
       } catch (err) {
+        setLoading(false);
         setError(err.message);
         throw err;
-      } finally {
-        setLoading(false);
       }
     },
     [sessionId, fetchItems],
