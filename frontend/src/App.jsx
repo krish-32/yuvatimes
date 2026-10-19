@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MainLayout from "./layouts/MainLayout";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
+import ProductItems from "./pages/ProductItems";
 import Pos from "./pages/POS";
 import Sales from "./pages/Sales";
 import NotFound from "./pages/NotFound";
@@ -22,6 +23,7 @@ function App() {
             <Route path="/" element={<MainLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="inventory" element={<Inventory />} />
+              <Route path="inventory/products/:id" element={<ErrorBoundary><ProductItems /></ErrorBoundary>} />
               <Route path="pos" element={<Pos />} />
               <Route path="sales" element={<Sales />} />
               <Route path="*" element={<NotFound />} />

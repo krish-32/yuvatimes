@@ -108,3 +108,24 @@ export function useRevertBatch() {
     },
   });
 }
+
+export function useProductItems(productId) {
+  return useQuery({
+    queryKey: inventoryKeys.productItems(productId),
+    queryFn: async () => {
+      const response = await inventoryService.getProductItems(productId);
+      return Array.isArray(response) ? response : response.data || [];
+    },
+    enabled: !!productId,
+  });
+}
+
+export function useDeleteBarcode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (serial) => {
+      return await inventoryService.deleteBarcode(serial);
+    },
+    onSuccess: () => invalidateAll(queryClient),
+  });
+}

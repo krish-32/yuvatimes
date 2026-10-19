@@ -41,7 +41,9 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Get("/products", h.GetProducts)
 			r.Put("/products/{id}", h.UpdateProduct)
 			r.Delete("/products/{id}", h.DeleteProduct)
+			r.Get("/products/{id}/items", h.GetProductItems)
 			r.Get("/barcodes/{barcodeValue}", h.SearchBarcode)
+			r.Delete("/barcodes/{serial}", h.DeleteBarcode)
 		})
 
 		// POS Checkout

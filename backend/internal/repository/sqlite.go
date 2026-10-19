@@ -734,3 +734,104 @@ func (r *Repository) ExportAndPurgeSales(ctx context.Context) ([]map[string]inte
 	}
 	return records, nil
 }
+
+// GetProductItems returns all barcode items for a given product, ordered by created_at ASC (FIFO).
+// Filtering and sorting happen entirely at the database level.
+func (r *Repository) GetProductItems(ctx context.Context, productID string) ([]map[string]interface{}, error) {
+	// First verify the product exists and get its metadata
+	var pType, brand, model string
+	var pPrice, sPrice float64
+	err := r.DB.QueryRowContext(ctx, "SELECT product_type, brand, model, purchase_price, selling_price FROM products WHERE id = ?", productID).
+		Scan(&pType, &brand, &model, &pPrice, &sPrice)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("product not found")
+		}
+		return nil, err
+	}
+
+	query := `
+		SELECT b.serial, b.batch_id, b.status, b.checkout_session_id, b.created_at
+		FROM barcodes b
+		WHERE b.product_id = ?
+		ORDER BY b.created_at ASC
+	`
+	rows, err := r.DB.QueryContext(ctx, query, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		var serial, batchID, status, createdAt string
+		var sessionID sql.NullString
+		if err := rows.Scan(&serial, &batchID, &status, &sessionID, &createdAt); err != nil {
+			return nil, err
+		}
+		item := map[string]interface{}{
+			"serial":       serial,
+			"batchId":      batchID,
+			"status":       status,
+			"createdAt":    createdAt,
+			"productType":  pType,
+			"brand":        brand,
+			"model":        model,
+			"purchasePrice": pPrice,
+			"sellingPrice": sPrice,
+		}
+		if sessionID.Valid {
+			item["checkoutSessionId"] = sessionID.String
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// DeleteBarcode removes a single barcode item. Only IN_STOCK or DRAFT items can be deleted.
+// Returns the product_id so the caller can clean up orphaned products if needed.
+func (r *Repository) DeleteBarcode(ctx context.Context, serial string) (string, error) {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	// Get current status and product_id
+	var status, productID string
+	err = tx.QueryRowContext(ctx, "SELECT status, product_id FROM barcodes WHERE serial = ?", serial).Scan(&status, &productID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("barcode not found")
+		}
+		return "", err
+	}
+
+	// Only allow deletion of IN_STOCK or DRAFT items
+	if status != "IN_STOCK" && status != "DRAFT" {
+		return "", fmt.Errorf("cannot delete barcode with status %s (only IN_STOCK or DRAFT allowed)", status)
+	}
+
+	_, err = tx.ExecContext(ctx, "DELETE FROM barcodes WHERE serial = ?", serial)
+	if err != nil {
+		return "", err
+	}
+
+	// Targeted orphan cleanup: delete product if no more barcodes reference it
+	var remaining int
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM barcodes WHERE product_id = ?", productID).Scan(&remaining)
+	if err != nil {
+		return "", err
+	}
+	if remaining == 0 {
+		_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id = ?", productID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return productID, nil
+}

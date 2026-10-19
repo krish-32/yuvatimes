@@ -19,5 +19,6 @@ export const dashboardKeys = {
 export const inventoryKeys = {
   all: ["inventory"],
   products: (search = '') => [...inventoryKeys.all, "products", search],
+  productItems: (productId) => [...inventoryKeys.all, "productItems", productId],
   draftBatches: () => [...inventoryKeys.all, "draftBatches"],
 };

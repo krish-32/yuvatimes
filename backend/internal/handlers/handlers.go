@@ -442,3 +442,47 @@ func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// GetProductItems returns all barcode items for a product, ordered FIFO (created_at ASC).
+func (h *Handler) GetProductItems(w http.ResponseWriter, r *http.Request) {
+	productID := chi.URLParam(r, "id")
+	if productID == "" {
+		respondError(w, http.StatusBadRequest, "missing product ID")
+		return
+	}
+
+	items, err := h.Repo.GetProductItems(r.Context(), productID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, "failed to fetch product items")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: items})
+}
+
+// DeleteBarcode deletes a single barcode item (only IN_STOCK or DRAFT).
+func (h *Handler) DeleteBarcode(w http.ResponseWriter, r *http.Request) {
+	serial := chi.URLParam(r, "serial")
+	if serial == "" {
+		respondError(w, http.StatusBadRequest, "missing barcode serial")
+		return
+	}
+
+	_, err := h.Repo.DeleteBarcode(r.Context(), serial)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else if strings.Contains(err.Error(), "cannot delete") {
+			respondError(w, http.StatusConflict, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Barcode deleted successfully"})
+}

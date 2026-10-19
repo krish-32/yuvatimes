@@ -26,6 +26,8 @@ export const inventoryService = {
   },
   updateProduct: (id, payload) => api.put(`/api/inventory/products/${id}`, payload),
   deleteProduct: (id) => api.delete(`/api/inventory/products/${id}`),
+  getProductItems: (productId) => api.get(`/api/inventory/products/${productId}/items`),
+  deleteBarcode: (serial) => api.delete(`/api/inventory/barcodes/${serial}`),
   getDraftBatches: () => api.get('/api/inventory/barcode-batches/drafts'),
   generateBatch: (payload) => api.post('/api/inventory/barcode-batches', payload),
   printZpl: (payload) => api.post('/api/v1/barcodes/print-zpl', payload),

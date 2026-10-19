@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, memo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Package,
   Plus,
@@ -14,6 +15,7 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
+  Eye,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
@@ -70,6 +72,8 @@ const Toast = memo(function Toast({ toast, onDismiss }) {
 });
 
 export default function Inventory() {
+  const navigate = useNavigate();
+
   /* ── Existing query hooks ──────────────────────────────────── */
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -359,6 +363,13 @@ export default function Inventory() {
         </td>
         <td className="px-6 py-3 text-sm text-center">
           <div className="flex items-center justify-center gap-1">
+            <button
+              onClick={() => navigate(`/inventory/products/${p.id}`)}
+              className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-500/10 rounded-lg transition-colors"
+              title="View Product Items"
+            >
+              <Eye size={16} />
+            </button>
             <button
               onClick={() => openEditModal(p)}
               className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
