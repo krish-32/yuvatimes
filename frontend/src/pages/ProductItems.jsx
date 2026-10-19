@@ -91,10 +91,7 @@ export default function ProductItems() {
   const [cartSuccessItem, setCartSuccessItem] = useState(null);
 
   // Memoize product metadata derived from first item (all items share the same product)
-  const product = useMemo(
-    () => (items.length > 0 ? items[0] : null),
-    [items],
-  );
+  const product = useMemo(() => (items.length > 0 ? items[0] : null), [items]);
 
   const handleDelete = useCallback(async () => {
     if (!deletingItem) return;
@@ -171,19 +168,21 @@ export default function ProductItems() {
           </button>
           <div>
             <h1 className="font-display text-2xl lg:text-3xl font-bold text-primary-800">
-              {product
-                ? `${product.brand} ${product.model}`
-                : "Product Items"}
+              {product ? `${product.brand} ${product.model}` : "Product Items"}
             </h1>
             <p className="text-primary-700/60 mt-1">
               {product
-                ? `${product.productType} — ₹${product.sellingPrice?.toFixed(2)} — FIFO ordered`
+                ? `${product.productType} — ₹${product.sellingPrice?.toFixed(2)}`
                 : "Loading product details..."}
             </p>
           </div>
         </div>
 
-        <GlassButton variant="secondary" onClick={refetch} isLoading={isLoading}>
+        <GlassButton
+          variant="secondary"
+          onClick={refetch}
+          isLoading={isLoading}
+        >
           Refresh
         </GlassButton>
       </div>
@@ -214,7 +213,7 @@ export default function ProductItems() {
               Barcode Items
             </h2>
             <span className="ml-auto text-sm text-primary-700/60">
-              {items.length} item{items.length !== 1 ? "s" : ""} (FIFO order)
+              {items.length} item{items.length !== 1 ? "s" : ""}
             </span>
           </div>
 
@@ -293,14 +292,13 @@ export default function ProductItems() {
                               aria-label={`Add ${item.serial} to cart`}
                             >
                               {addingToCart === item.serial ? (
-                                <Loader2
-                                  size={14}
-                                  className="animate-spin"
-                                />
+                                <Loader2 size={14} className="animate-spin" />
                               ) : (
                                 <ShoppingCart size={14} />
                               )}
-                              <span className="hidden sm:inline">Add to Cart</span>
+                              <span className="hidden sm:inline">
+                                Add to Cart
+                              </span>
                             </button>
                           )}
                           {canDelete && (
@@ -370,7 +368,8 @@ export default function ProductItems() {
             </p>
             {deletingItem?.status === "DRAFT" && (
               <p className="text-xs text-yellow-700 bg-yellow-50 rounded-lg px-3 py-2 border border-yellow-200">
-                This item is still in DRAFT status and has not been committed to stock.
+                This item is still in DRAFT status and has not been committed to
+                stock.
               </p>
             )}
           </div>
