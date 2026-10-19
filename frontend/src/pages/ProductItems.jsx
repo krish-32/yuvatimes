@@ -1,4 +1,4 @@
-import { useState, useCallback, memo, useEffect } from "react";
+import { useState, useCallback, useMemo, memo, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -47,6 +47,7 @@ const Toast = memo(function Toast({ toast, onDismiss }) {
         <span className="text-sm font-medium">{toast.message}</span>
         <button
           onClick={onDismiss}
+          aria-label="Dismiss notification"
           className="ml-2 opacity-60 hover:opacity-100"
         >
           <X size={14} />
@@ -85,10 +86,13 @@ export default function ProductItems() {
   const [toast, setToast] = useState(null);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  // Product metadata from first item (all items share the same product)
-  const product = items.length > 0 ? items[0] : null;
+  // Memoize product metadata derived from first item (all items share the same product)
+  const product = useMemo(
+    () => (items.length > 0 ? items[0] : null),
+    [items],
+  );
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!deletingItem) return;
     try {
       await deleteBarcode(deletingItem.serial);
@@ -100,40 +104,44 @@ export default function ProductItems() {
     } catch (err) {
       setToast({ type: "error", message: `Delete failed: ${err.message}` });
     }
-  };
+  }, [deletingItem, deleteBarcode]);
 
-  const handleAddToCart = async (item) => {
-    if (!activeSessionId) {
-      setToast({
-        type: "error",
-        message: "No active POS session. Open the POS tab first.",
-      });
-      return;
-    }
-    if (item.status !== "IN_STOCK") {
-      setToast({
-        type: "error",
-        message: `Cannot add item with status ${item.status}`,
-      });
-      return;
-    }
-    setAddingToCart(item.serial);
-    try {
-      await scanItem(item.serial);
-      setToast({
-        type: "success",
-        message: `✓ ${item.serial} (${product?.brand} ${product?.model}) added to cart successfully`,
-      });
-      refetch();
-    } catch (err) {
-      setToast({
-        type: "error",
-        message: `Failed to add to cart: ${err.message}`,
-      });
-    } finally {
-      setAddingToCart(null);
-    }
-  };
+  const handleAddToCart = useCallback(
+    async (item) => {
+      if (!activeSessionId) {
+        setToast({
+          type: "error",
+          message: "No active POS session. Open the POS tab first.",
+        });
+        return;
+      }
+      if (item.status !== "IN_STOCK") {
+        setToast({
+          type: "error",
+          message: `Cannot add item with status ${item.status}`,
+        });
+        return;
+      }
+      setAddingToCart(item.serial);
+      try {
+        await scanItem(item.serial);
+        setToast({
+          type: "success",
+          message: `✓ ${item.serial} (${product?.brand ?? ""} ${product?.model ?? ""}) added to cart successfully`,
+        });
+        // Fire-and-forget refetch with silent error handling — React Query retry handles transient failures
+        refetch().catch(() => {});
+      } catch (err) {
+        setToast({
+          type: "error",
+          message: `Failed to add to cart: ${err.message}`,
+        });
+      } finally {
+        setAddingToCart(null);
+      }
+    },
+    [activeSessionId, scanItem, product, refetch],
+  );
 
   if (error) {
     return (
@@ -155,6 +163,7 @@ export default function ProductItems() {
             onClick={() => navigate("/inventory")}
             className="p-2 rounded-xl bg-white/40 hover:bg-white/60 border border-white/50 transition-colors"
             title="Back to Inventory"
+            aria-label="Back to Inventory"
           >
             <ArrowLeft size={20} className="text-primary-700" />
           </button>
@@ -270,7 +279,7 @@ export default function ProductItems() {
                           : "—"}
                       </td>
                       <td className="px-6 py-4 text-xs font-mono text-primary-700/50">
-                        {item.batchId?.slice(0, 8)}…
+                        {item.batchId ? `${item.batchId.slice(0, 8)}…` : "—"}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
@@ -280,6 +289,7 @@ export default function ProductItems() {
                               disabled={addingToCart === item.serial}
                               className="p-2 text-primary-600 hover:text-white hover:bg-primary-500 rounded-lg transition-colors disabled:opacity-50"
                               title="Add to Cart"
+                              aria-label={`Add ${item.serial} to cart`}
                             >
                               {addingToCart === item.serial ? (
                                 <Loader2
@@ -296,6 +306,7 @@ export default function ProductItems() {
                               onClick={() => setDeletingItem(item)}
                               className="p-2 text-secondary-500/60 hover:text-white hover:bg-secondary-500 rounded-lg transition-colors"
                               title="Delete"
+                              aria-label={`Delete barcode ${item.serial}`}
                             >
                               <Trash2 size={16} />
                             </button>

@@ -363,17 +363,21 @@ export default function Inventory() {
         </td>
         <td className="px-6 py-3 text-sm text-center">
           <div className="flex items-center justify-center gap-1">
-            <button
-              onClick={() => navigate(`/inventory/products/${p.id}`)}
-              className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-500/10 rounded-lg transition-colors"
-              title="View Product Items"
-            >
-              <Eye size={16} />
-            </button>
+            {p.id && (
+              <button
+                onClick={() => navigate(`/inventory/products/${p.id}`)}
+                className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                title="View Product Items"
+                aria-label={`View items for ${p.brand} ${p.model}`}
+              >
+                <Eye size={16} />
+              </button>
+            )}
             <button
               onClick={() => openEditModal(p)}
               className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
               title="Edit Product"
+              aria-label={`Edit ${p.brand} ${p.model}`}
             >
               <Pencil size={16} />
             </button>
@@ -381,6 +385,7 @@ export default function Inventory() {
               onClick={() => openDeleteModal(p)}
               className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
               title="Delete Product"
+              aria-label={`Delete ${p.brand} ${p.model}`}
             >
               <Trash2 size={16} />
             </button>
