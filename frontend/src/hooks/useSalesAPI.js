@@ -25,12 +25,13 @@ export function useExportAndPurgeSales() {
 
   return useMutation({
     mutationFn: () => salesService.exportAndPurgeSales(),
-    onSuccess: async () => {
-      // Wipe cached sales pages and refetch
-      await queryClient.resetQueries({ queryKey: ["sales"] });
-      // Purging sales affects dashboard stats and inventory availability
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+    onSuccess: () => {
+      // Invalidate all affected caches in parallel
+      Promise.all([
+        queryClient.resetQueries({ queryKey: ["sales"] }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+        queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+      ]);
     },
   });
 }

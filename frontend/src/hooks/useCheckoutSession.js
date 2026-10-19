@@ -47,9 +47,12 @@ export function useCheckoutSession(sessionId) {
       setError(null);
       try {
         const data = await posService.scanItem(sessionId, serial);
-        await fetchItems();
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+        // Run cart refresh + cache invalidations in parallel to avoid serial round-trips
+        await Promise.all([
+          fetchItems(),
+          queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+        ]);
         return data;
       } catch (err) {
         setError(err.message);
@@ -68,9 +71,12 @@ export function useCheckoutSession(sessionId) {
       setError(null);
       try {
         await posService.removeItem(sessionId, serial);
-        await fetchItems();
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+        // Run cart refresh + cache invalidations in parallel
+        await Promise.all([
+          fetchItems(),
+          queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+        ]);
       } catch (err) {
         setError(err.message);
         throw err;
@@ -92,9 +98,12 @@ export function useCheckoutSession(sessionId) {
           discountAmount,
         );
         clearSessionItems(sessionId);
-        await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
-        await queryClient.resetQueries({ queryKey: ["sales"] });
+        // Invalidate all related caches in parallel
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: inventoryKeys.all }),
+          queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+          queryClient.resetQueries({ queryKey: ["sales"] }),
+        ]);
         return data;
       } catch (err) {
         setError(err.message);
