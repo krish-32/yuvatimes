@@ -19,6 +19,7 @@ import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
 import GlassButton from "../components/GlassButton";
 import GlassModal from "../components/GlassModal";
+import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 import {
   useProducts,
   useDraftBatches,
@@ -406,18 +407,27 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Error banner */}
-      {(productsError || batchesError || formError) && (
+      {/* API error — full styled display */}
+      {(productsError || batchesError) && !formError && (
+        <ErrorDisplay
+          status={getErrorType(productsError || batchesError)}
+          errorMessage={(productsError || batchesError)?.message}
+          onRetry={handleRefresh}
+          showHomeButton={false}
+          showBackButton={false}
+        />
+      )}
+
+      {/* Form validation error — inline banner */}
+      {formError && (
         <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-secondary-600 mt-0.5" size={20} />
             <div>
               <h3 className="font-semibold text-secondary-800">
-                Error Occurred
+                Validation Error
               </h3>
-              <p className="text-sm text-secondary-700">
-                {formError || productsError?.message || batchesError?.message}
-              </p>
+              <p className="text-sm text-secondary-700">{formError}</p>
             </div>
           </div>
         </GlassCard>

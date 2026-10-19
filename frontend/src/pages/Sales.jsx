@@ -1,6 +1,7 @@
 import { useInfiniteSales, useExportAndPurgeSales } from "../hooks/useSalesAPI";
 import GlassCard from "../components/GlassCard";
 import GlassButton from "../components/GlassButton";
+import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 import {
   History,
   Download,
@@ -124,9 +125,13 @@ export default function Sales() {
       </div>
 
       {isError && (
-        <div className="p-4 bg-secondary-500/20 text-secondary-800 rounded-xl">
-          Error loading sales: {error?.message}
-        </div>
+        <ErrorDisplay
+          status={getErrorType(error)}
+          errorMessage={error?.message}
+          onRetry={() => window.location.reload()}
+          showHomeButton={false}
+          showBackButton={false}
+        />
       )}
 
       {/* Sales Table */}
