@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import {
   Package,
   Plus,
@@ -113,20 +113,9 @@ export default function Inventory() {
   const [toast, setToast] = useState(null);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  /* ── Search handlers with debounce ─────────────────────────── */
-  const debounceRef = useRef(null);
-
+  /* ── Search handlers (button-triggered only) ────────────────── */
   const handleApplySearch = useCallback(() => {
     setAppliedSearch(searchInput.trim());
-  }, [searchInput]);
-
-  // Debounce: auto-trigger search 400ms after user stops typing
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setAppliedSearch(searchInput.trim());
-    }, 400);
-    return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
   const handleClearSearch = useCallback(() => {

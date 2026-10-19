@@ -2,6 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dashboardService, inventoryService } from "../api/apiCalls";
 import { dashboardKeys, inventoryKeys } from "../lib/queryClient";
 
+/** Helper: invalidate both inventory and dashboard caches */
+const invalidateAll = (queryClient) => {
+  queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+  queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+};
+
 /**
  * Custom hooks leveraging TanStack Query for Inventory & Barcode APIs
  */
@@ -32,9 +38,7 @@ export function useUpdateProduct() {
     mutationFn: async ({ id, payload }) => {
       return await inventoryService.updateProduct(id, payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-    },
+    onSuccess: () => invalidateAll(queryClient),
   });
 }
 
@@ -44,10 +48,7 @@ export function useDeleteProduct() {
     mutationFn: async (id) => {
       return await inventoryService.deleteProduct(id);
     },
-    onSuccess: () => {
-      // Invalidate all inventory queries (products + drafts) since barcodes were cascaded
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-    },
+    onSuccess: () => invalidateAll(queryClient),
   });
 }
 
@@ -90,10 +91,7 @@ export function useCommitBatch() {
     mutationFn: async (batchId) => {
       return await inventoryService.commitBatch(batchId);
     },
-    onSuccess: () => {
-      // Invalidate all inventory queries (products with any filter + drafts)
-      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
-    },
+    onSuccess: () => invalidateAll(queryClient),
   });
 }
 
@@ -105,8 +103,8 @@ export function useRevertBatch() {
       return await inventoryService.revertBatch(batchId);
     },
     onSuccess: () => {
-      // Discarding a batch only affects the drafts list
       queryClient.invalidateQueries({ queryKey: inventoryKeys.draftBatches() });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }

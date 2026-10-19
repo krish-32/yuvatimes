@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { posService } from "../api/apiCalls";
 import { usePosStore } from "../store/usePosStore";
-import { queryClient, inventoryKeys } from "../lib/queryClient";
+import { queryClient, inventoryKeys, dashboardKeys } from "../lib/queryClient";
 
 /**
  * Hook for POS checkout session management integrating with Zustand multi-session store.
@@ -49,6 +49,7 @@ export function useCheckoutSession(sessionId) {
         const data = await posService.scanItem(sessionId, serial);
         await fetchItems();
         await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
         return data;
       } catch (err) {
         setError(err.message);
@@ -69,6 +70,7 @@ export function useCheckoutSession(sessionId) {
         await posService.removeItem(sessionId, serial);
         await fetchItems();
         await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
       } catch (err) {
         setError(err.message);
         throw err;
@@ -91,6 +93,7 @@ export function useCheckoutSession(sessionId) {
         );
         clearSessionItems(sessionId);
         await queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        await queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
         await queryClient.resetQueries({ queryKey: ["sales"] });
         return data;
       } catch (err) {
