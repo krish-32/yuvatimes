@@ -10,6 +10,13 @@ const generateUUID = () => {
       });
 };
 // ==========================================
+// DASHBOARD
+// ==========================================
+export const dashboardService = {
+  getStats: () => api.get('/api/dashboard/stats'),
+};
+
+// ==========================================
 // INVENTORY & BARCODE MANAGEMENT
 // ==========================================
 export const inventoryService = {
@@ -58,6 +65,9 @@ export const salesService = {
     document.body.appendChild(link);
     link.click();
     link.remove();
+    
+    // Revoke the object URL to free memory
+    window.URL.revokeObjectURL(url);
     
     return true;
   }

@@ -33,29 +33,29 @@ export function useBrowserPrint() {
       const pdfUrl = URL.createObjectURL(blob);
 
       // 2. Create a hidden iframe to hold the PDF
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
       iframe.src = pdfUrl;
-      
+
       // 3. Wait for the PDF to load into the iframe, then trigger print dialog
       iframe.onload = () => {
         setTimeout(() => {
           iframe.contentWindow.print();
         }, 500); // Small delay to ensure PDF plugin is fully initialized
       };
-      
+
       document.body.appendChild(iframe);
 
       // 4. Cleanup the iframe after printing dialog closes (approximate wait)
       setTimeout(() => {
-        document.body.removeChild(iframe);
+        iframe.remove();
         URL.revokeObjectURL(pdfUrl);
-      }, 15000); 
+      }, 15000);
     } catch (err) {
       console.error(err);
       setPrinterError(err.message);

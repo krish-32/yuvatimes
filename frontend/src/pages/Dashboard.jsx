@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
   Package,
@@ -8,32 +7,22 @@ import {
   ArrowRight,
   Clock,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
-import { useProducts } from "../hooks/useInventoryAPI";
-import { Loader2 } from "lucide-react";
+import { useDashboardStats } from "../hooks/useInventoryAPI";
 import GlassCard from "../components/GlassCard";
 
 export default function Dashboard() {
-  const { data: products = [], isLoading: loadingProducts, error: loadError } = useProducts();
+  const {
+    data: statsData,
+    isLoading: loadingStats,
+    error: loadError,
+  } = useDashboardStats();
 
-  // Derive stats from catalog data
-  const totalProducts = products.length;
-  const totalUnits = products.reduce(
-    (sum, p) => sum + (p.totalUnits || p.total || 0),
-    0,
-  );
-  const availableUnits = products.reduce(
-    (sum, p) => sum + (p.availableUnits || p.available || 0),
-    0,
-  );
-  const totalValue = products.reduce(
-    (sum, p) =>
-      sum + (p.sellingPrice || 0) * (p.availableUnits || p.available || 0),
-    0,
-  );
-  const lowStock = products.filter(
-    (p) => (p.availableUnits || p.available || 0) <= 5,
-  );
+  const totalProducts  = statsData?.totalProducts  ?? 0;
+  const totalUnits     = statsData?.totalUnits     ?? 0;
+  const availableUnits = statsData?.availableUnits ?? 0;
+  const totalValue     = statsData?.totalValue     ?? 0;
 
   const stats = [
     {
@@ -90,7 +79,7 @@ export default function Dashboard() {
         </GlassCard>
       )}
 
-      {loadingProducts && (
+      {loadingStats && (
         <div className="flex justify-center p-8">
           <Loader2 className="animate-spin text-primary-500" size={32} />
         </div>
@@ -106,7 +95,7 @@ export default function Dashboard() {
                   {stat.label}
                 </p>
                 <p className="text-xl lg:text-2xl font-display font-bold text-primary-800 mt-2">
-                  {loadingProducts ? "..." : stat.value}
+                  {loadingStats ? "..." : stat.value}
                 </p>
               </div>
               <div

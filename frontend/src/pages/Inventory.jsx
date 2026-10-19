@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   Package,
   Plus,
@@ -31,8 +31,8 @@ import {
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 
-/* ── Tiny inline toast ─────────────────────────────────────────── */
-function Toast({ toast, onDismiss }) {
+/* ── Tiny inline toast (memoized to avoid re-renders from parent state changes) */
+const Toast = memo(function Toast({ toast, onDismiss }) {
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(onDismiss, 4000);
@@ -66,7 +66,7 @@ function Toast({ toast, onDismiss }) {
       </div>
     </div>
   );
-}
+});
 
 export default function Inventory() {
   /* ── Existing query hooks ──────────────────────────────────── */
@@ -113,15 +113,26 @@ export default function Inventory() {
   const [toast, setToast] = useState(null);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  /* ── Search handlers ───────────────────────────────────────── */
-  const handleApplySearch = () => {
-    setAppliedSearch(searchInput.trim());
-  };
+  /* ── Search handlers with debounce ─────────────────────────── */
+  const debounceRef = useRef(null);
 
-  const handleClearSearch = () => {
+  const handleApplySearch = useCallback(() => {
+    setAppliedSearch(searchInput.trim());
+  }, [searchInput]);
+
+  // Debounce: auto-trigger search 400ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setAppliedSearch(searchInput.trim());
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [searchInput]);
+
+  const handleClearSearch = useCallback(() => {
     setSearchInput("");
     setAppliedSearch("");
-  };
+  }, []);
 
   const hasActiveSearch = appliedSearch.length > 0;
 
@@ -146,8 +157,8 @@ export default function Inventory() {
           productType: editForm.productType,
           brand: editForm.brand,
           model: editForm.model,
-          purchasePrice: parseFloat(editForm.purchasePrice) || 0,
-          sellingPrice: parseFloat(editForm.sellingPrice) || 0,
+          purchasePrice: Number.parseFloat(editForm.purchasePrice) || 0,
+          sellingPrice: Number.parseFloat(editForm.sellingPrice) || 0,
         },
       });
       setEditingProduct(null);
@@ -189,9 +200,8 @@ export default function Inventory() {
   });
   const [formError, setFormError] = useState(null);
 
-  const handleRefresh = () => {
-    refetchProducts();
-    refetchBatches();
+  const handleRefresh = async () => {
+    await Promise.all([refetchProducts(), refetchBatches()]);
   };
 
   const handleGenerateBatch = async (e) => {
@@ -206,13 +216,12 @@ export default function Inventory() {
         productType: batchForm.productType,
         brand: batchForm.brand,
         model: batchForm.model,
-        purchasePrice: parseFloat(batchForm.purchasePrice) || 0,
-        sellingPrice: parseFloat(batchForm.sellingPrice) || 0,
+        purchasePrice: Number.parseFloat(batchForm.purchasePrice) || 0,
+        sellingPrice: Number.parseFloat(batchForm.sellingPrice) || 0,
         quantity: parseInt(batchForm.quantity, 10) || 1,
       };
       const response = await generateBatch(payload);
       const data = response.data || response;
-      console.log(data);
 
       const rawSerials = data.serials || data.barcodes || [];
       const serialList = rawSerials.map((b) =>
@@ -300,6 +309,86 @@ export default function Inventory() {
     }
   };
 
+  /* ── Catalog table body (avoids nested ternary – SonarQube S3358) ── */
+  let catalogContent;
+  if (loadingProducts) {
+    catalogContent = (
+      <tr>
+        <td colSpan="8" className="px-6 py-8 text-center">
+          <Loader2
+            className="animate-spin text-primary-500 mx-auto mb-2"
+            size={24}
+          />
+          <p className="text-sm text-primary-700/60">Loading catalog...</p>
+        </td>
+      </tr>
+    );
+  } else if (products.length === 0) {
+    catalogContent = (
+      <tr>
+        <td colSpan={8} className="text-center py-12 text-primary-700/50">
+          {hasActiveSearch
+            ? "No products match your search criteria."
+            : "No products found. Generate a batch to get started."}
+        </td>
+      </tr>
+    );
+  } else {
+    catalogContent = products.map((p, i) => (
+      <tr
+        key={p.id || i}
+        className="border-b border-white/20 hover:bg-white/20 transition-colors"
+      >
+        <td className="px-6 py-3 text-sm text-primary-800">
+          {p.productType || p.type || "—"}
+        </td>
+        <td className="px-6 py-3 text-sm font-medium text-primary-800">
+          {p.brand || "—"}
+        </td>
+        <td className="px-6 py-3 text-sm text-primary-700">{p.model || "—"}</td>
+        <td className="px-6 py-3 text-sm text-right text-primary-700">
+          ₹{(p.purchasePrice || 0).toFixed(2)}
+        </td>
+        <td className="px-6 py-3 text-sm text-right font-semibold text-primary-800">
+          ₹{(p.sellingPrice || 0).toFixed(2)}
+        </td>
+        <td className="px-6 py-3 text-sm text-center text-primary-700">
+          {p.totalUnits || 0}
+        </td>
+        <td className="px-6 py-3 text-sm text-center">
+          <span
+            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium
+              ${
+                (p.availableUnits || 0) <= 5
+                  ? "bg-secondary-500/20 text-secondary-700"
+                  : "bg-green-500/20 text-green-700"
+              }`}
+          >
+            {p.availableUnits || 0}
+          </span>
+        </td>
+        <td className="px-6 py-3 text-sm text-center">
+          <div className="flex items-center justify-center gap-1">
+            <button
+              onClick={() => openEditModal(p)}
+              className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
+              title="Edit Product"
+            >
+              <Pencil size={16} />
+            </button>
+            <button
+              onClick={() => openDeleteModal(p)}
+              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
+              title="Delete Product"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    ));
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -355,6 +444,7 @@ export default function Inventory() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleApplySearch()}
+            maxLength={100}
             className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40"
           />
           <div className="flex gap-2 shrink-0">
@@ -430,88 +520,7 @@ export default function Inventory() {
                 </th>
               </tr>
             </thead>
-            <tbody>
-              {loadingProducts ? (
-                <tr>
-                  <td colSpan="8" className="px-6 py-8 text-center">
-                    <Loader2
-                      className="animate-spin text-primary-500 mx-auto mb-2"
-                      size={24}
-                    />
-                    <p className="text-sm text-primary-700/60">
-                      Loading catalog...
-                    </p>
-                  </td>
-                </tr>
-              ) : products.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="text-center py-12 text-primary-700/50"
-                  >
-                    {hasActiveSearch
-                      ? "No products match your search criteria."
-                      : "No products found. Generate a batch to get started."}
-                  </td>
-                </tr>
-              ) : (
-                products.map((p, i) => (
-                  <tr
-                    key={p.id || i}
-                    className="border-b border-white/20 hover:bg-white/20 transition-colors"
-                  >
-                    <td className="px-6 py-3 text-sm text-primary-800">
-                      {p.productType || p.type || "—"}
-                    </td>
-                    <td className="px-6 py-3 text-sm font-medium text-primary-800">
-                      {p.brand || "—"}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-primary-700">
-                      {p.model || "—"}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right text-primary-700">
-                      ₹{(p.purchasePrice || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right font-semibold text-primary-800">
-                      ₹{(p.sellingPrice || 0).toFixed(2)}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-center text-primary-700">
-                      {p.totalUnits || 0}
-                    </td>
-                    <td className="px-6 py-3 text-sm text-center">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${
-                            (p.availableUnits || 0) <= 5
-                              ? "bg-secondary-500/20 text-secondary-700"
-                              : "bg-green-500/20 text-green-700"
-                          }`}
-                      >
-                        {p.availableUnits || 0}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3 text-sm text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => openEditModal(p)}
-                          className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
-                          title="Edit Product"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          onClick={() => openDeleteModal(p)}
-                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
-                          title="Delete Product"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
+            <tbody>{catalogContent}</tbody>
           </table>
         </div>
       </GlassCard>
@@ -545,19 +554,20 @@ export default function Inventory() {
                       {batch.serials.length} barcodes
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {batch.serials.slice(0, 8).map((s, i) => (
+                  {/* CSS-only display limit: nth-child hides <span>s beyond 8; <small> stays visible */}
+                  <div className="flex flex-wrap gap-2 mt-3 [&>span:nth-child(n+9)]:hidden">
+                    {batch.serials.map((s) => (
                       <span
-                        key={i}
+                        key={`${batch.batchId}-${s}`}
                         className="px-2 py-1 rounded-lg bg-white/40 text-xs font-mono text-primary-800 border border-white/50"
                       >
                         {s}
                       </span>
                     ))}
                     {batch.serials.length > 8 && (
-                      <span className="px-2 py-1 text-xs text-primary-700/60">
+                      <small className="px-2 py-1 text-xs text-primary-700/60">
                         +{batch.serials.length - 8} more
-                      </span>
+                      </small>
                     )}
                   </div>
                 </div>

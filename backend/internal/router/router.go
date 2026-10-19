@@ -21,15 +21,18 @@ func New(h *handlers.Handler) *chi.Mux {
 
 	// CORS Middleware
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://127.0.0.1:5173", "https://yuvatimesonline.web.app", "https://yuvatimesonline.firebaseapp.com", "https://watch-repair-c303c.web.app", "https://watch-repair-c303c.firebaseapp.com"},
+		AllowedOrigins:   []string{"http://localhost:5173", "https://yuvatimesonline.web.app", "https://yuvatimesonline.firebaseapp.com", "https://watch-repair-c303c.web.app", "https://watch-repair-c303c.firebaseapp.com"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
-		MaxAge:           300, 
+		MaxAge:           300,
 	}))
 
 	r.Route("/api", func(r chi.Router) {
+		// Dashboard
+		r.Get("/dashboard/stats", h.GetDashboardStats)
+
 		r.Route("/inventory", func(r chi.Router) {
 			r.Post("/barcode-batches", h.GenerateBarcodes)
 			r.Get("/barcode-batches/drafts", h.GetDraftBatches)
@@ -48,7 +51,7 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Delete("/items/{serial}", h.UnstageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
 		})
-		
+
 		// Sales Records
 		r.Route("/sales", func(r chi.Router) {
 			r.Get("/", h.GetSales)

@@ -1,9 +1,13 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { salesService } from '../api/apiCalls';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { salesService } from "../api/apiCalls";
 
 export function useInfiniteSales() {
   return useInfiniteQuery({
-    queryKey: ['sales'],
+    queryKey: ["sales"],
     queryFn: ({ pageParam = 0 }) => salesService.getSales(50, pageParam),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
@@ -20,9 +24,9 @@ export function useExportAndPurgeSales() {
 
   return useMutation({
     mutationFn: () => salesService.exportAndPurgeSales(),
-    onSuccess: () => {
+    onSuccess: async () => {
       // Use resetQueries for infinite queries to completely wipe the cached pages and refetch
-      queryClient.resetQueries({ queryKey: ['sales'] });
+      await queryClient.resetQueries({ queryKey: ["sales"] });
     },
   });
 }

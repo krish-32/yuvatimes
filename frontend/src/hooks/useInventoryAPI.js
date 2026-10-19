@@ -1,10 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { inventoryService } from "../api/apiCalls";
-import { inventoryKeys } from "../lib/queryClient";
+import { dashboardService, inventoryService } from "../api/apiCalls";
+import { dashboardKeys, inventoryKeys } from "../lib/queryClient";
 
 /**
  * Custom hooks leveraging TanStack Query for Inventory & Barcode APIs
  */
+
+export function useDashboardStats() {
+  return useQuery({
+    queryKey: dashboardKeys.stats(),
+    queryFn: async () => {
+      const response = await dashboardService.getStats();
+      return response.data || response;
+    },
+  });
+}
 
 export function useProducts(search = '') {
   return useQuery({
