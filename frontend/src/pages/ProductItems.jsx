@@ -122,7 +122,7 @@ export default function ProductItems() {
       await scanItem(item.serial);
       setToast({
         type: "success",
-        message: `${item.serial} added to cart`,
+        message: `✓ ${item.serial} (${product?.brand} ${product?.model}) added to cart successfully`,
       });
       refetch();
     } catch (err) {
