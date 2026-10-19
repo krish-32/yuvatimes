@@ -4,6 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { salesService } from "../api/apiCalls";
+import { dashboardKeys, inventoryKeys } from "../lib/queryClient";
 
 export function useInfiniteSales() {
   return useInfiniteQuery({
@@ -25,8 +26,11 @@ export function useExportAndPurgeSales() {
   return useMutation({
     mutationFn: () => salesService.exportAndPurgeSales(),
     onSuccess: async () => {
-      // Use resetQueries for infinite queries to completely wipe the cached pages and refetch
+      // Wipe cached sales pages and refetch
       await queryClient.resetQueries({ queryKey: ["sales"] });
+      // Purging sales affects dashboard stats and inventory availability
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
+      queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
     },
   });
 }
