@@ -87,7 +87,7 @@ export function useBrowserPrint() {
           URL.revokeObjectURL(pdfUrl);
           iframeRef.current = null;
         }
-      }, 15000);
+      }, 150000);
     } catch (err) {
       console.error(err);
       setPrinterError(err.message);
