@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo, memo, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Tag,
@@ -8,10 +9,7 @@ import {
   Loader2,
   Package,
   Clock,
-  CheckCircle2,
-  AlertTriangle,
-  X,
-  ExternalLink,
+  MinusCircle,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassButton from "../components/GlassButton";
@@ -20,49 +18,22 @@ import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 import { useProductItems, useDeleteBarcode } from "../hooks/useInventoryAPI";
 import { useCheckoutSession } from "../hooks/useCheckoutSession";
 import { usePosStore } from "../store/usePosStore";
-
-/* ── Tiny inline toast (used only for errors & delete success) ── */
-const Toast = memo(function Toast({ toast, onDismiss }) {
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(onDismiss, 4000);
-    return () => clearTimeout(t);
-  }, [toast, onDismiss]);
-
-  if (!toast) return null;
-  const isSuccess = toast.type === "success";
-  return (
-    <div className="fixed bottom-6 right-6 z-[100] animate-fade-in">
-      <div
-        className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border backdrop-blur-md ${
-          isSuccess
-            ? "bg-green-50/90 border-green-300 text-green-800"
-            : "bg-red-50/90 border-red-300 text-red-800"
-        }`}
-      >
-        {isSuccess ? (
-          <CheckCircle2 size={18} className="text-green-600 shrink-0" />
-        ) : (
-          <AlertTriangle size={18} className="text-red-600 shrink-0" />
-        )}
-        <span className="text-sm font-medium">{toast.message}</span>
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss notification"
-          className="ml-2 opacity-60 hover:opacity-100"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
-  );
-});
+import { useCartStore } from "../store/useCartStore";
+import { useToastStore } from "../store/useToastStore";
+import { inventoryKeys } from "../lib/queryClient";
 
 const STATUS_BADGES = {
   DRAFT: "bg-yellow-100 text-yellow-800 border-yellow-300",
   IN_STOCK: "bg-green-100 text-green-800 border-green-300",
   STAGED: "bg-blue-100 text-blue-800 border-blue-300",
   SOLD: "bg-primary-100 text-primary-800 border-primary-300",
+};
+
+/** Safely format a date string; returns "—" for missing/invalid values. */
+const formatDate = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 };
 
 export default function ProductItems() {
@@ -80,66 +51,93 @@ export default function ProductItems() {
     useDeleteBarcode();
 
   const activeSessionId = usePosStore((state) => state.activeSessionId);
-  const { scanItem } = useCheckoutSession(activeSessionId);
+  const { scanItem, removeItem } = useCheckoutSession(activeSessionId);
+
+  // Cart awareness — optimistic state.
+  // Select the Set itself (not the isInCart method) so the component
+  // re-renders when serials are added/removed optimistically.
+  const cartSerials = useCartStore((state) => state._cartSerials);
+  const addToast = useToastStore((state) => state.addToast);
+
+  // Query client for optimistic cache updates (delete rollback)
+  const queryClient = useQueryClient();
 
   const [deletingItem, setDeletingItem] = useState(null);
   const [addingToCart, setAddingToCart] = useState(null);
-  const [toast, setToast] = useState(null);
-  const dismissToast = useCallback(() => setToast(null), []);
-
-  // State for the "Added to Cart" success alert popup
-  const [cartSuccessItem, setCartSuccessItem] = useState(null);
+  const [removingFromCart, setRemovingFromCart] = useState(null);
 
   // Memoize product metadata derived from first item (all items share the same product)
   const product = useMemo(() => (items.length > 0 ? items[0] : null), [items]);
 
+  /* ── Optimistic Delete ────────────────────────────────── */
   const handleDelete = useCallback(async () => {
-    if (!deletingItem) return;
-    try {
-      await deleteBarcode(deletingItem.serial);
-      setDeletingItem(null);
-      setToast({
-        type: "success",
-        message: `Barcode ${deletingItem.serial} deleted`,
-      });
-    } catch (err) {
-      setToast({ type: "error", message: `Delete failed: ${err.message}` });
-    }
-  }, [deletingItem, deleteBarcode]);
+    if (!deletingItem || isDeleting) return;
+    const serial = deletingItem.serial;
+    const queryKey = inventoryKeys.productItems(productId);
 
+    // Cancel any in-flight refetches so they don't clobber the optimistic state
+    await queryClient.cancelQueries({ queryKey });
+    const previousItems = queryClient.getQueryData(queryKey) || [];
+
+    // ── Optimistic Update: remove item from local list immediately ──
+    queryClient.setQueryData(queryKey, (old = []) =>
+      old.filter((item) => item.serial !== serial),
+    );
+    setDeletingItem(null);
+
+    try {
+      await deleteBarcode(serial);
+      addToast("success", `Barcode ${serial} deleted`);
+    } catch (err) {
+      // ── Rollback: restore the exact previous snapshot ──
+      queryClient.setQueryData(queryKey, previousItems);
+      addToast("error", `Delete failed: ${err.message}`);
+    }
+  }, [deletingItem, isDeleting, deleteBarcode, addToast, queryClient, productId]);
+
+  /* ── Optimistic Add to Cart ───────────────────────────── */
   const handleAddToCart = useCallback(
     async (item) => {
       if (!activeSessionId) {
-        setToast({
-          type: "error",
-          message: "No active POS session. Open the POS tab first.",
-        });
+        addToast("error", "No active POS session. Open the POS tab first.");
         return;
       }
       if (item.status !== "IN_STOCK") {
-        setToast({
-          type: "error",
-          message: `Cannot add item with status ${item.status}`,
-        });
+        addToast("error", `Cannot add item with status ${item.status}`);
         return;
       }
       setAddingToCart(item.serial);
       try {
         await scanItem(item.serial);
-        // Show success alert popup instead of toast
-        setCartSuccessItem(item);
-        // Fire-and-forget refetch with silent error handling — React Query retry handles transient failures
+        // Success feedback is a non-intrusive toast from useCheckoutSession
+        // Fire-and-forget refetch with silent error handling
         refetch().catch(() => {});
-      } catch (err) {
-        setToast({
-          type: "error",
-          message: `Failed to add to cart: ${err.message}`,
-        });
+      } catch {
+        // Error already handled by useCheckoutSession (toast + rollback)
       } finally {
         setAddingToCart(null);
       }
     },
-    [activeSessionId, scanItem, refetch],
+    [activeSessionId, scanItem, refetch, addToast],
+  );
+
+  /* ── Optimistic Remove from Cart ──────────────────────── */
+  const handleRemoveFromCart = useCallback(
+    async (item) => {
+      if (!activeSessionId) return;
+      setRemovingFromCart(item.serial);
+      try {
+        await removeItem(item.serial);
+        addToast("success", `Removed ${item.serial} from cart`);
+        // Refetch product items to update status
+        refetch().catch(() => {});
+      } catch {
+        // Error already handled by useCheckoutSession (toast + rollback)
+      } finally {
+        setRemovingFromCart(null);
+      }
+    },
+    [activeSessionId, removeItem, refetch, addToast],
   );
 
   if (error) {
@@ -247,14 +245,20 @@ export default function ProductItems() {
               </thead>
               <tbody className="divide-y divide-white/20">
                 {items.map((item, idx) => {
+                  const itemInCart = cartSerials.has(item.serial);
                   const canDelete =
-                    item.status === "IN_STOCK" || item.status === "DRAFT";
-                  const canPurchase = item.status === "IN_STOCK";
+                    (item.status === "IN_STOCK" || item.status === "DRAFT") && !itemInCart;
+                  const canPurchase = item.status === "IN_STOCK" && !itemInCart;
+                  const canRemoveFromCart = itemInCart && item.status === "STAGED";
+                  const isAdding = addingToCart === item.serial;
+                  const isRemoving = removingFromCart === item.serial;
 
                   return (
                     <tr
                       key={item.serial}
-                      className="hover:bg-white/20 transition-colors"
+                      className={`hover:bg-white/20 transition-colors ${
+                        itemInCart ? "bg-primary-500/5" : ""
+                      }`}
                     >
                       <td className="px-6 py-4 text-xs text-primary-700/50 font-mono">
                         {idx + 1}
@@ -266,32 +270,35 @@ export default function ProductItems() {
                       </td>
                       <td className="px-6 py-4">
                         <span
-                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                             STATUS_BADGES[item.status] ||
                             "bg-gray-100 text-gray-700 border-gray-300"
                           }`}
                         >
+                          {itemInCart && (
+                            <ShoppingCart size={10} className="shrink-0" />
+                          )}
                           {item.status}
+                          {itemInCart && " (In Cart)"}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-primary-700/60">
-                        {item.createdAt
-                          ? new Date(item.createdAt).toLocaleString()
-                          : "—"}
+                        {formatDate(item.createdAt)}
                       </td>
                       <td className="px-6 py-4 text-xs font-mono text-primary-700/50">
                         {item.batchId ? `${item.batchId.slice(0, 8)}…` : "—"}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {/* Add to Cart — shown when item is NOT in cart and is IN_STOCK */}
                           {canPurchase && (
                             <button
                               onClick={() => handleAddToCart(item)}
-                              disabled={addingToCart === item.serial}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-lg transition-colors disabled:opacity-50 shadow-sm"
+                              disabled={isAdding}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 rounded-lg transition-all duration-200 disabled:opacity-50 shadow-sm hover:shadow-md active:scale-95"
                               aria-label={`Add ${item.serial} to cart`}
                             >
-                              {addingToCart === item.serial ? (
+                              {isAdding ? (
                                 <Loader2 size={14} className="animate-spin" />
                               ) : (
                                 <ShoppingCart size={14} />
@@ -301,17 +308,39 @@ export default function ProductItems() {
                               </span>
                             </button>
                           )}
+
+                          {/* Remove from Cart — shown when item IS in cart */}
+                          {(itemInCart || canRemoveFromCart) && (
+                            <button
+                              onClick={() => handleRemoveFromCart(item)}
+                              disabled={isRemoving}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-500/15 hover:bg-orange-500 hover:text-white rounded-lg transition-all duration-200 disabled:opacity-50 shadow-sm hover:shadow-md active:scale-95 border border-orange-300/30"
+                              aria-label={`Remove ${item.serial} from cart`}
+                            >
+                              {isRemoving ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <MinusCircle size={14} />
+                              )}
+                              <span className="hidden sm:inline">
+                                Remove from Cart
+                              </span>
+                            </button>
+                          )}
+
+                          {/* Delete — hidden when item is in cart to avoid state conflicts */}
                           {canDelete && (
                             <button
                               onClick={() => setDeletingItem(item)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary-600 bg-secondary-500/10 hover:bg-secondary-500 hover:text-white rounded-lg transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-secondary-600 bg-secondary-500/10 hover:bg-secondary-500 hover:text-white rounded-lg transition-all duration-200 active:scale-95"
                               aria-label={`Delete barcode ${item.serial}`}
                             >
                               <Trash2 size={14} />
                               <span className="hidden sm:inline">Delete</span>
                             </button>
                           )}
-                          {!canDelete && !canPurchase && (
+
+                          {!canDelete && !canPurchase && !itemInCart && !canRemoveFromCart && (
                             <span className="text-xs text-primary-700/40 italic">
                               No actions
                             </span>
@@ -376,78 +405,6 @@ export default function ProductItems() {
         </div>
       </GlassModal>
 
-      {/* ── Added to Cart — Success Alert Popup ────────────── */}
-      <GlassModal
-        open={!!cartSuccessItem}
-        onClose={() => setCartSuccessItem(null)}
-        title="Added to Cart"
-        size="sm"
-        footer={
-          <>
-            <GlassButton
-              variant="secondary"
-              onClick={() => setCartSuccessItem(null)}
-            >
-              Continue Shopping
-            </GlassButton>
-            <GlassButton
-              onClick={() => {
-                setCartSuccessItem(null);
-                navigate("/pos");
-              }}
-            >
-              <ExternalLink size={16} />
-              Go to POS
-            </GlassButton>
-          </>
-        }
-      >
-        <div className="text-center space-y-4">
-          {/* Success icon */}
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mx-auto">
-            <CheckCircle2 size={36} className="text-green-600" />
-          </div>
-
-          {/* Success message */}
-          <div>
-            <h3 className="text-lg font-semibold text-primary-800 mb-1">
-              Item Added Successfully!
-            </h3>
-            <p className="text-sm text-primary-700/70">
-              Barcode{" "}
-              <code className="font-mono bg-primary-900/5 px-1.5 py-0.5 rounded text-primary-800 text-xs">
-                {cartSuccessItem?.serial}
-              </code>{" "}
-              has been added to your active POS cart.
-            </p>
-          </div>
-
-          {/* Item details card */}
-          <div className="glass-card p-4 space-y-2 text-sm text-left">
-            <div className="flex justify-between border-b border-white/20 pb-2">
-              <span className="font-semibold text-primary-800">Product</span>
-              <span className="text-primary-700">
-                {product?.brand ?? "—"} {product?.model ?? ""}
-              </span>
-            </div>
-            <div className="flex justify-between border-b border-white/20 pb-2">
-              <span className="font-semibold text-primary-800">Serial</span>
-              <span className="font-mono text-xs text-primary-700">
-                {cartSuccessItem?.serial}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="font-semibold text-primary-800">Price</span>
-              <span className="text-primary-700 font-semibold">
-                ₹{product?.sellingPrice?.toFixed(2) ?? "0.00"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </GlassModal>
-
-      {/* Toast for errors & delete success */}
-      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

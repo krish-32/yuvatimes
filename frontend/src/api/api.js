@@ -1,27 +1,15 @@
 import axios from "axios";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "https://yuvatimes.onrender.com";
+const API_BASE_URL = "https://yuvatimes.onrender.com";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
+  // Abort requests that hang so optimistic UI rollback always fires.
   timeout: 15000,
 });
-
-// Request interceptor — attach auth token if available
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("pos_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 // Response interceptor — unwrap data, normalize errors
 api.interceptors.response.use(

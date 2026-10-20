@@ -105,3 +105,35 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Toast progress bar animation */
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+/* ── Responsive Search Bar Fix ──────────────────────────── */
+/* Mobile: stack search controls vertically, full-width input */
+@media (max-width: 639px) {
+  .search-bar-container {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+  .search-bar-container .glass-input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .search-bar-actions {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .search-bar-actions > * {
+    flex: 1;
+  }
+}

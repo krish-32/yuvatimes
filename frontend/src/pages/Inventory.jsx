@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Package,
   Plus,
@@ -13,7 +14,6 @@ import {
   Trash2,
   Search,
   X,
-  CheckCircle2,
   AlertTriangle,
   Eye,
 } from "lucide-react";
@@ -33,46 +33,12 @@ import {
   useDeleteProduct,
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
-
-/* ── Tiny inline toast (memoized to avoid re-renders from parent state changes) */
-const Toast = memo(function Toast({ toast, onDismiss }) {
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(onDismiss, 4000);
-    return () => clearTimeout(t);
-  }, [toast, onDismiss]);
-
-  if (!toast) return null;
-
-  const isSuccess = toast.type === "success";
-  return (
-    <div className="fixed bottom-6 right-6 z-[100] animate-fade-in">
-      <div
-        className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border backdrop-blur-md ${
-          isSuccess
-            ? "bg-green-50/90 border-green-300 text-green-800"
-            : "bg-red-50/90 border-red-300 text-red-800"
-        }`}
-      >
-        {isSuccess ? (
-          <CheckCircle2 size={18} className="text-green-600 shrink-0" />
-        ) : (
-          <AlertTriangle size={18} className="text-red-600 shrink-0" />
-        )}
-        <span className="text-sm font-medium">{toast.message}</span>
-        <button
-          onClick={onDismiss}
-          className="ml-2 opacity-60 hover:opacity-100"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
-  );
-});
+import { useToastStore } from "../store/useToastStore";
+import { inventoryKeys } from "../lib/queryClient";
 
 export default function Inventory() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   /* ── Existing query hooks ──────────────────────────────────── */
   const [searchInput, setSearchInput] = useState("");
@@ -115,8 +81,7 @@ export default function Inventory() {
   const [deletingProduct, setDeletingProduct] = useState(null);
 
   /* ── Toast state ───────────────────────────────────────────── */
-  const [toast, setToast] = useState(null);
-  const dismissToast = useCallback(() => setToast(null), []);
+  const addToast = useToastStore((state) => state.addToast);
 
   /* ── Search handlers (button-triggered only) ────────────────── */
   const handleApplySearch = useCallback(() => {
@@ -156,9 +121,9 @@ export default function Inventory() {
         },
       });
       setEditingProduct(null);
-      setToast({ type: "success", message: "Product updated successfully" });
+      addToast("success", "Product updated successfully");
     } catch (err) {
-      setToast({ type: "error", message: `Failed to update: ${err.message}` });
+      addToast("error", `Failed to update: ${err.message}`);
     }
   };
 
@@ -169,17 +134,27 @@ export default function Inventory() {
 
   const handleDeleteProduct = async () => {
     if (!deletingProduct?.id) return;
+    const queryKey = inventoryKeys.products(appliedSearch);
+
+    // Cancel any in-flight refetches so they don't clobber the optimistic state
+    await queryClient.cancelQueries({ queryKey });
+    const previousProducts = queryClient.getQueryData(queryKey) || [];
+
+    // ── Optimistic Update: remove the product row immediately ──
+    queryClient.setQueryData(queryKey, (old = []) =>
+      old.filter((p) => p.id !== deletingProduct.id),
+    );
+    setDeletingProduct(null);
+
     try {
       const result = await deleteProduct(deletingProduct.id);
       const barcodesRemoved =
         result?.data?.barcodesRemoved ?? result?.barcodesRemoved ?? 0;
-      setDeletingProduct(null);
-      setToast({
-        type: "success",
-        message: `Product and ${barcodesRemoved} barcode(s) deleted successfully`,
-      });
+      addToast("success", `Product and ${barcodesRemoved} barcode(s) deleted successfully`);
     } catch (err) {
-      setToast({ type: "error", message: `Delete failed: ${err.message}` });
+      // ── Rollback: restore the previous product list ──
+      queryClient.setQueryData(queryKey, previousProducts);
+      addToast("error", `Delete failed: ${err.message}`);
     }
   };
 
@@ -451,8 +426,8 @@ export default function Inventory() {
 
       {/* ── Search / Filter Bar ──────────────────────────────── */}
       <GlassCard className="!py-3 !px-5">
-        <div className="flex items-center gap-3">
-          <Search size={18} className="text-primary-600 shrink-0" />
+        <div className="search-bar-container flex items-center gap-3">
+          <Search size={18} className="text-primary-600 shrink-0 hidden sm:block" />
           <input
             type="text"
             placeholder="Search by product type, brand, or model…"
@@ -460,12 +435,13 @@ export default function Inventory() {
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleApplySearch()}
             maxLength={100}
-            className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40"
+            className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40 min-w-0"
+            id="inventory-search-input"
           />
-          <div className="flex gap-2 shrink-0">
+          <div className="search-bar-actions flex gap-2 shrink-0">
             <GlassButton onClick={handleApplySearch} className="!py-2 !px-4">
               <Search size={14} />
-              Search
+              <span className="hidden sm:inline">Search</span>
             </GlassButton>
             {hasActiveSearch && (
               <GlassButton
@@ -474,13 +450,13 @@ export default function Inventory() {
                 className="!py-2 !px-4"
               >
                 <X size={14} />
-                Clear
+                <span className="hidden sm:inline">Clear</span>
               </GlassButton>
             )}
           </div>
         </div>
         {hasActiveSearch && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-primary-700/70">
+          <div className="mt-2 flex items-center gap-2 text-xs text-primary-700/70 flex-wrap">
             <span>Searching for:</span>
             <span className="px-2 py-0.5 rounded-full bg-primary-500/10 text-primary-700 font-medium">
               &ldquo;{appliedSearch}&rdquo;
@@ -946,9 +922,6 @@ export default function Inventory() {
           </div>
         )}
       </GlassModal>
-
-      {/* ── Toast Notification ───────────────────────────────── */}
-      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }
