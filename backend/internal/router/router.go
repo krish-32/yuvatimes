@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
-
+d
 func New(h *handlers.Handler) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -53,6 +53,9 @@ func New(h *handlers.Handler) *chi.Mux {
 			r.Delete("/items/{serial}", h.UnstageCartItem)
 			r.Post("/complete", h.CompleteCheckout)
 		})
+
+		// Dashboard aggregates (computed in SQL, not in the client)
+		r.Get("/dashboard/stats", h.GetDashboardStats)
 
 		// Sales Records
 		r.Route("/sales", func(r chi.Router) {
