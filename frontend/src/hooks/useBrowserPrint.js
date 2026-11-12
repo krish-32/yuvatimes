@@ -80,14 +80,14 @@ export function useBrowserPrint() {
 
       document.body.appendChild(iframe);
 
-      // 4. Cleanup the iframe after printing dialog closes
-      cleanupTimerRef.current = setTimeout(() => {
-        if (iframeRef.current === iframe) {
-          iframe.remove();
-          URL.revokeObjectURL(pdfUrl);
-          iframeRef.current = null;
-        }
-      }, 150000);
+      // // 4. Cleanup the iframe after printing dialog closes
+      // cleanupTimerRef.current = setTimeout(() => {
+      //   if (iframeRef.current === iframe) {
+      //     iframe.remove();
+      //     URL.revokeObjectURL(pdfUrl);
+      //     iframeRef.current = null;
+      //   }
+      // }, 150000);
     } catch (err) {
       console.error(err);
       setPrinterError(err.message);
