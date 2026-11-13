@@ -7,8 +7,10 @@ import "fmt"
 // At 203 dpi (8 dpmm), dots = mm * 8.
 //
 // The 25mm-height layout is the base and is kept unchanged. For larger labels
-// (e.g. 50x50mm) the text, barcode height/bar width, and spacing scale up so
-// the barcode fills the full sticker instead of leaving empty space.
+// (e.g. 50x50mm) the text and barcode scale up so the barcode fills the full
+// sticker. The barcode module width is computed from the serial length so the
+// barcode spans the label width, and the barcode height fills the vertical
+// space between the top and bottom text lines.
 func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM int) string {
 	width := widthMM * 8
 	height := heightMM * 8
@@ -29,29 +31,35 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 	bottomY := 148
 
 	if scale > 1 {
-		// Scale up content for larger labels so the barcode fills the sticker.
+		// Scale up text for larger labels.
 		fontScale := 1 + (scale-1)*0.6
 		topFont = int(30 * fontScale)
 		bottomFont = topFont
-		barWidth = 3 + int(scale-1)
-		barcodeHeight = int(70 * scale * 1.4)
 		topY = int(32 * scale)
-		barcodeY = int(68 * scale)
-		bottomY = barcodeY + barcodeHeight + 20
 
-		// Ensure the content fits within the label height.
-		if bottomY+bottomFont > height {
-			barcodeHeight = height - barcodeY - bottomFont - 20
-			if barcodeHeight < 10 {
-				barcodeHeight = 10
-			}
-			bottomY = barcodeY + barcodeHeight + 20
+		// Barcode height fills the space between the top and bottom text.
+		barcodeY = int(68 * scale)
+		bottomY = height - bottomFont - 20
+		barcodeHeight = bottomY - barcodeY - 20
+		if barcodeHeight < 10 {
+			barcodeHeight = 10
+		}
+
+		// Module width computed from the serial length so the barcode spans
+		// the label width (Code 128 ≈ 11 modules per char + 20 overhead).
+		modules := 11*len(serial) + 20
+		barWidth = width / modules
+		if barWidth < 1 {
+			barWidth = 1
+		}
+		if barWidth > 6 {
+			barWidth = 6
 		}
 	}
 
 	// Standard barcode label layout:
 	//   - Model number (top-left) and price (top-right)
-	//   - Barcode encodes the serial number (thicker bars, scaled height)
+	//   - Barcode encodes the serial number (fills the label width & height)
 	//   - Serial number printed below the barcode as the human-readable line
 	zpl := fmt.Sprintf(`^XA
 ^PW%d
