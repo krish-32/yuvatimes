@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +16,7 @@ import {
   X,
   AlertTriangle,
   Eye,
+  Share2,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
@@ -35,6 +36,7 @@ import {
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 import { useToastStore } from "../store/useToastStore";
 import { inventoryKeys } from "../lib/queryClient";
+import { zplToPdfBlob, sharePdf, canShareFiles } from "../utils/zplPdf";
 
 export default function Inventory() {
   const navigate = useNavigate();
@@ -69,6 +71,20 @@ export default function Inventory() {
   const [activeWorkflowBatch, setActiveWorkflowBatch] = useState(null);
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
+
+  // Barcode preview & share state
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareSupported] = useState(() => canShareFiles());
+
+  // Revoke the preview object URL when the Step 1 modal is closed.
+  useEffect(() => {
+    if (workflowStep !== 1 && previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  }, [workflowStep, previewUrl]);
 
   const { mutateAsync: updateProduct, isPending: isUpdatingProduct } =
     useUpdateProduct();
@@ -150,7 +166,10 @@ export default function Inventory() {
       const result = await deleteProduct(deletingProduct.id);
       const barcodesRemoved =
         result?.data?.barcodesRemoved ?? result?.barcodesRemoved ?? 0;
-      addToast("success", `Product and ${barcodesRemoved} barcode(s) deleted successfully`);
+      addToast(
+        "success",
+        `Product and ${barcodesRemoved} barcode(s) deleted successfully`,
+      );
     } catch (err) {
       // ── Rollback: restore the previous product list ──
       queryClient.setQueryData(queryKey, previousProducts);
@@ -224,21 +243,66 @@ export default function Inventory() {
     }
   };
 
+  // Fetch the ZPL code for the active workflow batch from the backend.
+  const getBatchZpl = useCallback(async () => {
+    if (!activeWorkflowBatch) return null;
+    const payload = {
+      brand: activeWorkflowBatch.brand,
+      model: activeWorkflowBatch.model,
+      price: activeWorkflowBatch.sellingPrice
+        ? activeWorkflowBatch.sellingPrice.toString()
+        : "0",
+      serials: activeWorkflowBatch.serials,
+    };
+    const response = await printZpl(payload);
+    return response.data?.zpl || response.zpl || response;
+  }, [activeWorkflowBatch, printZpl]);
+
+  // Generate a PDF preview of the barcodes and show it in the modal.
+  const handlePreview = useCallback(async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
+    setPreviewLoading(true);
+    try {
+      const zplData = await getBatchZpl();
+      const blob = await zplToPdfBlob(zplData);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setFormError(`Failed to preview: ${err.message || printerError}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [activeWorkflowBatch, getBatchZpl, previewUrl, printerError]);
+
+  // Share the barcode PDF to third-party apps on the device.
+  const handleShare = useCallback(async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
+    setSharing(true);
+    try {
+      const zplData = await getBatchZpl();
+      const blob = await zplToPdfBlob(zplData);
+      const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.pdf`;
+      await sharePdf(blob, filename);
+      addToast("success", "Barcode PDF shared");
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        // User dismissed the share sheet — not an error.
+        return;
+      }
+      setFormError(`Failed to share: ${err.message || printerError}`);
+    } finally {
+      setSharing(false);
+    }
+  }, [activeWorkflowBatch, getBatchZpl, printerError, addToast]);
+
   const handleSilentPrint = async () => {
     if (!activeWorkflowBatch) return;
     setFormError(null);
     try {
-      const payload = {
-        brand: activeWorkflowBatch.brand,
-        model: activeWorkflowBatch.model,
-        price: activeWorkflowBatch.sellingPrice
-          ? activeWorkflowBatch.sellingPrice.toString()
-          : "0",
-        serials: activeWorkflowBatch.serials,
-      };
       // 1. Get the ZPL code from the backend
-      const response = await printZpl(payload);
-      const zplData = response.data?.zpl || response.zpl || response;
+      const zplData = await getBatchZpl();
 
       // 2. Convert ZPL to Image via Labelary and trigger window.print()
       await printZplToDevice(zplData);
@@ -427,7 +491,10 @@ export default function Inventory() {
       {/* ── Search / Filter Bar ──────────────────────────────── */}
       <GlassCard className="!py-3 !px-5">
         <div className="search-bar-container flex items-center gap-3">
-          <Search size={18} className="text-primary-600 shrink-0 hidden sm:block" />
+          <Search
+            size={18}
+            className="text-primary-600 shrink-0 hidden sm:block"
+          />
           <input
             type="text"
             placeholder="Search by product type, brand, or model…"
@@ -604,6 +671,16 @@ export default function Inventory() {
             <GlassButton variant="secondary" onClick={() => setWorkflowStep(0)}>
               Cancel
             </GlassButton>
+            {shareSupported && (
+              <GlassButton
+                variant="secondary"
+                onClick={handleShare}
+                isLoading={sharing}
+              >
+                <Share2 size={16} />
+                Share
+              </GlassButton>
+            )}
             <GlassButton onClick={handleSilentPrint} isLoading={isPrinting}>
               <Printer size={16} />
               Print Barcode
@@ -630,6 +707,33 @@ export default function Inventory() {
               <span className="font-semibold">Labels to Print</span>
               <span>{activeWorkflowBatch?.serials?.length || 0}</span>
             </div>
+          </div>
+
+          {/* Barcode preview */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Barcode Preview</span>
+              <GlassButton
+                variant="secondary"
+                onClick={handlePreview}
+                isLoading={previewLoading}
+                className="!py-1.5 !px-3 !text-xs"
+              >
+                <Eye size={14} />
+                {previewUrl ? "Refresh Preview" : "Generate Preview"}
+              </GlassButton>
+            </div>
+            {previewUrl ? (
+              <iframe
+                src={previewUrl}
+                title="Barcode Preview"
+                className="w-full h-64 rounded-xl border border-white/30 bg-white"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-40 rounded-xl border border-dashed border-white/40 text-sm text-primary-700/50">
+                Click &ldquo;Generate Preview&rdquo; to see the barcode labels.
+              </div>
+            )}
           </div>
         </div>
       </GlassModal>
