@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { CheckCircle2, Receipt } from "lucide-react";
+import { CheckCircle2, Receipt, Printer, Share2, Loader2 } from "lucide-react";
 
 import GlassCard from "../components/GlassCard";
 import GlassButton from "../components/GlassButton";
@@ -13,6 +13,7 @@ import { useCheckoutSession } from "../hooks/useCheckoutSession";
 import { usePosStore } from "../store/usePosStore";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 import { generateReceiptZpl } from "../utils/receiptZpl";
+import { zplToPdfBlob, sharePdf, canShareFiles } from "../utils/zplPdf";
 
 export default function POS() {
   const activeSessionId = usePosStore((state) => state.activeSessionId);
@@ -37,6 +38,13 @@ export default function POS() {
 
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
+  // Bill preview & share state (similar to the barcode flow)
+  const [billData, setBillData] = useState(null); // { zpl, size }
+  const [billPreviewUrl, setBillPreviewUrl] = useState(null);
+  const [billPreviewLoading, setBillPreviewLoading] = useState(false);
+  const [sharingBill, setSharingBill] = useState(false);
+  const [shareSupported] = useState(() => canShareFiles());
+
   const { isPrinting, printZpl } = useBrowserPrint();
 
   const handleRemove = async (serial) => {
@@ -52,9 +60,9 @@ export default function POS() {
       const data = await completeCheckout(calculatedDiscountAmount);
       setShowCompleteModal(false);
 
-      // Instantly generate and print the receipt ZPL!
+      // Generate the A5 bill ZPL and show a preview with print/share options.
       const receiptData = {
-        storeName: "YuvaTimes Watch POS",
+        storeName: "YUVA TIMES",
         sessionId: data.invoiceNumber || activeSessionId,
         items,
         subtotal,
@@ -63,11 +71,53 @@ export default function POS() {
       };
 
       const { zpl, size } = generateReceiptZpl(receiptData);
-      printZpl(zpl, size).catch((err) => {
-        console.error("Silent print failed:", err);
-      });
+      setBillData({ zpl, size });
+      setBillPreviewLoading(true);
+      try {
+        const blob = await zplToPdfBlob(zpl, size);
+        if (billPreviewUrl) URL.revokeObjectURL(billPreviewUrl);
+        setBillPreviewUrl(URL.createObjectURL(blob));
+      } catch (err) {
+        console.error("Bill preview failed:", err);
+      } finally {
+        setBillPreviewLoading(false);
+      }
     } catch {
       // error handled in useCheckoutSession
+    }
+  };
+
+  const closeBillPreview = () => {
+    if (billPreviewUrl) URL.revokeObjectURL(billPreviewUrl);
+    setBillPreviewUrl(null);
+    setBillData(null);
+  };
+
+  const handlePrintBill = async () => {
+    if (!billData) return;
+    try {
+      await printZpl(billData.zpl, billData.size);
+    } catch (err) {
+      console.error("Bill print failed:", err);
+    } finally {
+      // Close the preview after the print dialog is dispatched.
+      closeBillPreview();
+    }
+  };
+
+  const handleShareBill = async () => {
+    if (!billData) return;
+    setSharingBill(true);
+    try {
+      const blob = await zplToPdfBlob(billData.zpl, billData.size);
+      const filename = `bill-${billData.size.replace("x", "-")}.pdf`;
+      await sharePdf(blob, filename);
+    } catch (err) {
+      if (err?.name !== "AbortError") {
+        console.error("Bill share failed:", err);
+      }
+    } finally {
+      setSharingBill(false);
     }
   };
 
@@ -120,7 +170,9 @@ export default function POS() {
       {/* Error banner */}
       {error && (
         <ErrorDisplay
-          status={getErrorType(error instanceof Error ? error : new Error(error))}
+          status={getErrorType(
+            error instanceof Error ? error : new Error(error),
+          )}
           errorMessage={typeof error === "string" ? error : error?.message}
           onRetry={() => window.location.reload()}
           showHomeButton={false}
@@ -257,6 +309,56 @@ export default function POS() {
               <span>₹{total.toFixed(2)}</span>
             </div>
           </div>
+        </div>
+      </GlassModal>
+
+      {/* Bill preview & share modal */}
+      <GlassModal
+        open={!!billData}
+        onClose={closeBillPreview}
+        title="Bill Preview"
+        footer={
+          <>
+            <GlassButton variant="secondary" onClick={closeBillPreview}>
+              Close
+            </GlassButton>
+            {shareSupported && (
+              <GlassButton
+                variant="secondary"
+                onClick={handleShareBill}
+                isLoading={sharingBill}
+              >
+                <Share2 size={16} />
+                Share
+              </GlassButton>
+            )}
+            <GlassButton onClick={handlePrintBill} isLoading={isPrinting}>
+              <Printer size={16} />
+              Print Bill
+            </GlassButton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-primary-700/70">
+            Your sale is complete. Preview the A5 bill below, then print it or
+            share it to a third-party app.
+          </p>
+          {billPreviewLoading ? (
+            <div className="flex items-center justify-center h-[60vh]">
+              <Loader2 className="animate-spin text-primary-500" size={32} />
+            </div>
+          ) : billPreviewUrl ? (
+            <iframe
+              src={billPreviewUrl}
+              title="Bill Preview"
+              className="w-full h-[60vh] rounded-xl border border-white/30 bg-white"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-[40vh] rounded-xl border border-dashed border-white/40 text-sm text-primary-700/50">
+              Bill preview is unavailable.
+            </div>
+          )}
         </div>
       </GlassModal>
     </div>
