@@ -78,6 +78,12 @@ export default function Inventory() {
   const [sharing, setSharing] = useState(false);
   const [shareSupported] = useState(() => canShareFiles());
 
+  // Label size selection (mm). Presets: 50x25 (clock) and 50x50 (watch),
+  // plus a custom size.
+  const [labelSize, setLabelSize] = useState("50x25");
+  const [customWidth, setCustomWidth] = useState(50);
+  const [customHeight, setCustomHeight] = useState(25);
+
   // Revoke the preview object URL when the Step 1 modal is closed.
   useEffect(() => {
     if (workflowStep !== 1 && previewUrl) {
@@ -243,6 +249,26 @@ export default function Inventory() {
     }
   };
 
+  // Resolve the selected label size into mm dimensions and a Labelary size string.
+  const getLabelSize = useCallback(() => {
+    let widthMM = 50;
+    let heightMM = 25;
+    if (labelSize === "50x50") {
+      widthMM = 50;
+      heightMM = 50;
+    } else if (labelSize === "custom") {
+      widthMM = Number(customWidth) || 50;
+      heightMM = Number(customHeight) || 25;
+    }
+    const labelarySize = `${(widthMM / 25.4).toFixed(2)}x${(heightMM / 25.4).toFixed(2)}`;
+    return {
+      widthMM,
+      heightMM,
+      sizeStr: `${widthMM}x${heightMM}`,
+      labelarySize,
+    };
+  }, [labelSize, customWidth, customHeight]);
+
   // Fetch the ZPL code for the active workflow batch from the backend.
   const getBatchZpl = useCallback(async () => {
     if (!activeWorkflowBatch) return null;
@@ -253,10 +279,11 @@ export default function Inventory() {
         ? activeWorkflowBatch.sellingPrice.toString()
         : "0",
       serials: activeWorkflowBatch.serials,
+      size: getLabelSize().sizeStr,
     };
     const response = await printZpl(payload);
     return response.data?.zpl || response.zpl || response;
-  }, [activeWorkflowBatch, printZpl]);
+  }, [activeWorkflowBatch, printZpl, getLabelSize]);
 
   // Generate a PDF preview of the barcodes and show it in the modal.
   const handlePreview = useCallback(async () => {
@@ -265,7 +292,7 @@ export default function Inventory() {
     setPreviewLoading(true);
     try {
       const zplData = await getBatchZpl();
-      const blob = await zplToPdfBlob(zplData);
+      const blob = await zplToPdfBlob(zplData, getLabelSize().labelarySize);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(blob));
     } catch (err) {
@@ -273,7 +300,13 @@ export default function Inventory() {
     } finally {
       setPreviewLoading(false);
     }
-  }, [activeWorkflowBatch, getBatchZpl, previewUrl, printerError]);
+  }, [
+    activeWorkflowBatch,
+    getBatchZpl,
+    getLabelSize,
+    previewUrl,
+    printerError,
+  ]);
 
   // Share the barcode PDF to third-party apps on the device.
   const handleShare = useCallback(async () => {
@@ -282,7 +315,7 @@ export default function Inventory() {
     setSharing(true);
     try {
       const zplData = await getBatchZpl();
-      const blob = await zplToPdfBlob(zplData);
+      const blob = await zplToPdfBlob(zplData, getLabelSize().labelarySize);
       const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.pdf`;
       await sharePdf(blob, filename);
       addToast("success", "Barcode PDF shared");
@@ -295,7 +328,7 @@ export default function Inventory() {
     } finally {
       setSharing(false);
     }
-  }, [activeWorkflowBatch, getBatchZpl, printerError, addToast]);
+  }, [activeWorkflowBatch, getBatchZpl, getLabelSize, printerError, addToast]);
 
   const handleSilentPrint = async () => {
     if (!activeWorkflowBatch) return;
@@ -305,7 +338,7 @@ export default function Inventory() {
       const zplData = await getBatchZpl();
 
       // 2. Convert ZPL to Image via Labelary and trigger window.print()
-      await printZplToDevice(zplData);
+      await printZplToDevice(zplData, getLabelSize().labelarySize);
 
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
@@ -707,6 +740,52 @@ export default function Inventory() {
               <span className="font-semibold">Labels to Print</span>
               <span>{activeWorkflowBatch?.serials?.length || 0}</span>
             </div>
+          </div>
+
+          {/* Label size selector */}
+          <div className="space-y-2">
+            <span className="text-sm font-semibold">Label Size</span>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "50x25", label: "50×25mm", hint: "Clock" },
+                { value: "50x50", label: "50×50mm", hint: "Watch" },
+                { value: "custom", label: "Custom", hint: "Set size" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLabelSize(opt.value)}
+                  className={`px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
+                    labelSize === opt.value
+                      ? "bg-primary-500 text-white border-primary-500 shadow"
+                      : "bg-white/40 text-primary-700 border-white/50 hover:bg-white/60"
+                  }`}
+                >
+                  {opt.label}
+                  <span className="block text-[10px] font-normal opacity-80">
+                    {opt.hint}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {labelSize === "custom" && (
+              <div className="grid grid-cols-2 gap-3">
+                <GlassInput
+                  label="Width (mm)"
+                  type="number"
+                  min="10"
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(Number(e.target.value))}
+                />
+                <GlassInput
+                  label="Height (mm)"
+                  type="number"
+                  min="10"
+                  value={customHeight}
+                  onChange={(e) => setCustomHeight(Number(e.target.value))}
+                />
+              </div>
+            )}
           </div>
 
           {/* Barcode preview */}
