@@ -6,9 +6,9 @@ import "fmt"
 // widthMM and heightMM define the physical label size in millimetres.
 // At 203 dpi (8 dpmm), dots = mm * 8.
 //
-// Content (text size, barcode height/bar width, and spacing) scales with the
-// label height so that larger labels (e.g. 50x50mm) get bigger barcode and
-// text instead of just empty space. The base layout is designed for 25mm height.
+// The 25mm-height layout is the base and is kept unchanged. For larger labels
+// (e.g. 50x50mm) the text, barcode height/bar width, and spacing scale up so
+// the barcode fills the full sticker instead of leaving empty space.
 func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM int) string {
 	width := widthMM * 8
 	height := heightMM * 8
@@ -18,27 +18,36 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 	if scale < 1 {
 		scale = 1
 	}
-	// Fonts grow more gently than the label (1.5x at 50mm).
-	fontScale := 1 + (scale-1)*0.5
 
-	topFont := int(30 * fontScale)
-	bottomFont := topFont
-	if topFont > 60 {
-		topFont = 60
-		bottomFont = 60
+	// Base 25mm layout values (kept identical for 50x25mm).
+	topFont := 30
+	bottomFont := 30
+	barWidth := 3
+	barcodeHeight := 70
+	topY := 32
+	barcodeY := 68
+	bottomY := 148
+
+	if scale > 1 {
+		// Scale up content for larger labels so the barcode fills the sticker.
+		fontScale := 1 + (scale-1)*0.6
+		topFont = int(30 * fontScale)
+		bottomFont = topFont
+		barWidth = 3 + int(scale-1)
+		barcodeHeight = int(70 * scale * 1.4)
+		topY = int(32 * scale)
+		barcodeY = int(68 * scale)
+		bottomY = barcodeY + barcodeHeight + 20
+
+		// Ensure the content fits within the label height.
+		if bottomY+bottomFont > height {
+			barcodeHeight = height - barcodeY - bottomFont - 20
+			if barcodeHeight < 10 {
+				barcodeHeight = 10
+			}
+			bottomY = barcodeY + barcodeHeight + 20
+		}
 	}
-
-	// Barcode: thicker bars and taller height on larger labels.
-	barWidth := 3 + int(scale-1)
-	barcodeHeight := int(70 * scale)
-	if barcodeHeight > 140 {
-		barcodeHeight = 140
-	}
-
-	// Vertical positions scale with the label height.
-	topY := int(32 * scale)
-	barcodeY := int(68 * scale)
-	bottomY := int(148 * scale)
 
 	// Standard barcode label layout:
 	//   - Model number (top-left) and price (top-right)
