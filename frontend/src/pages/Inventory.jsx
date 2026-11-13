@@ -747,8 +747,8 @@ export default function Inventory() {
             <span className="text-sm font-semibold">Label Size</span>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { value: "50x25", label: "50×25mm", hint: "Clock" },
-                { value: "50x50", label: "50×50mm", hint: "Watch" },
+                { value: "50x25", label: "50×25mm", hint: "Watch" },
+                { value: "50x50", label: "50×50mm", hint: "Clock" },
                 { value: "custom", label: "Custom", hint: "Set size" },
               ].map((opt) => (
                 <button
