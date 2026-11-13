@@ -7,14 +7,13 @@ import "fmt"
 // At 203 dpi (8 dpmm), dots = mm * 8.
 //
 // The 50x25mm label keeps the standard layout (model/price, barcode, serial).
-// The 50x50mm label uses a larger barcode (thicker bars and taller height) and
-// adds extra detail text below it (brand, model, price, serial) to make use of
-// the larger sticker space.
+// The 50x50mm label uses the same barcode but adds extra detail text below it
+// (brand, model, price, serial) to make use of the larger sticker space.
 func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM int) string {
 	width := widthMM * 8
 	height := heightMM * 8
 
-	// Standard layout values (50x25mm).
+	// Standard layout values (identical for both sizes).
 	topFont := 30
 	bottomFont := 30
 	barWidth := 3
@@ -22,14 +21,6 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 	topY := 32
 	barcodeY := 68
 	bottomY := 148
-
-	// For 50x50mm, increase the barcode size (height & width) and shift the
-	// serial/details down to make room.
-	if heightMM > 25 {
-		barWidth = 4
-		barcodeHeight = 120
-		bottomY = 200
-	}
 
 	zpl := fmt.Sprintf(`^XA
 ^PW%d
