@@ -7,8 +7,8 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  // Abort requests that hang so optimistic UI rollback always fires.
-  timeout: 15000,
+  // // Abort requests that hang so optimistic UI rollback always fires.
+  // timeout: 15000,
 });
 
 // Response interceptor — unwrap data, normalize errors
