@@ -104,7 +104,8 @@ export function useCheckoutSession(sessionId) {
         removeSerialFromCart(serial);
         syncItems(sessionId, currentItems);
         setLoading(false);
-        setError(err.message);
+        // Show only a toast for scan/add-to-cart errors (e.g. no product found).
+        // Do NOT set the page-level error state, which would render the error page UI.
         addToast("error", `Failed to add to cart: ${err.message}`);
         throw err;
       }
