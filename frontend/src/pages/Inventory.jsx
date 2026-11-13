@@ -319,17 +319,18 @@ export default function Inventory() {
       const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.pdf`;
       await sharePdf(blob, filename);
       addToast("success", "Barcode PDF shared");
-      // After sharing, move to the in-stock confirmation step.
-      setWorkflowStep(2);
     } catch (err) {
-      if (err?.name === "AbortError") {
-        // User dismissed the share sheet — not an error.
+      if (err?.name !== "AbortError") {
+        // Only treat real failures as errors; a dismissed share sheet is fine.
+        setFormError(`Failed to share: ${err.message || printerError}`);
         return;
       }
-      setFormError(`Failed to share: ${err.message || printerError}`);
     } finally {
       setSharing(false);
     }
+    // After sharing (or dismissing the share sheet), show the in-stock
+    // confirmation instead of the preview UI.
+    setWorkflowStep(2);
   }, [activeWorkflowBatch, getBatchZpl, getLabelSize, printerError, addToast]);
 
   const handleSilentPrint = async () => {
