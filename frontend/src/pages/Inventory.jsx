@@ -319,6 +319,8 @@ export default function Inventory() {
       const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.pdf`;
       await sharePdf(blob, filename);
       addToast("success", "Barcode PDF shared");
+      // After sharing, move to the in-stock confirmation step.
+      setWorkflowStep(2);
     } catch (err) {
       if (err?.name === "AbortError") {
         // User dismissed the share sheet — not an error.
@@ -824,6 +826,12 @@ export default function Inventory() {
         title="Step 2: Confirm Quality & Stock"
         footer={
           <>
+            <GlassButton
+              variant="secondary"
+              onClick={() => setWorkflowStep(1)}
+            >
+              ← Back
+            </GlassButton>
             <GlassButton
               variant="secondary"
               onClick={() => handleConfirmStock(false)}
