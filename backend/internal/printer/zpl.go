@@ -16,5 +16,5 @@ func GenerateWatchTagZPL(brand, model, price, serial string) string {
 ^FO10,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
 ^FO10,148^A0N,30,30^FD%s^FS
 ^XZ`
-	return fmt.Sprintf(zpl, model, price, serial, serial)
+	return fmt.Sprintf(zpl, model, "₹"+price, serial, serial)
 }
