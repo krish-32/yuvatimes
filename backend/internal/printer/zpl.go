@@ -72,3 +72,20 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string) strin
 	)
 	return zpl
 }
+
+// GenerateWatchTagZPLSingleWide builds a 100x25mm label with a single sticker
+// on the left half. Used for an odd number of serials so every page stays the
+// same size (100x25mm) and the remaining sticker aligns on the next page.
+func GenerateWatchTagZPLSingleWide(brand, model, price, serial string) string {
+	zpl := fmt.Sprintf(`^XA
+^PW800
+^LL200
+^FO10,32^A0N,30,30^FB250,1,0,L^FD%s^FS
+^FO0,32^A0N,30,30^FB400,1,0,R^FD%s^FS
+^FO10,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
+^FO10,148^A0N,30,30^FD%s^FS
+^XZ`,
+		model, "Rs. "+price, serial, serial,
+	)
+	return zpl
+}
