@@ -29,7 +29,7 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 ^FO0,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS
 ^FO10,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
 ^FO10,%d^A0N,%d,%d^FD%s^FS
-`,
+`,7*
 		width, height,
 		topY, topFont, topFont, model,
 		topY, topFont, topFont, width, "Rs. "+price,

@@ -36,7 +36,7 @@ import {
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
 import { useToastStore } from "../store/useToastStore";
 import { inventoryKeys } from "../lib/queryClient";
-import { zplToPdfBlob, sharePdf, canShareFiles } from "../utils/zplPdf";
+import { zplToImageBlob, shareImage, canShareImages } from "../utils/zplPdf";
 
 export default function Inventory() {
   const navigate = useNavigate();
@@ -76,7 +76,7 @@ export default function Inventory() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [shareSupported] = useState(() => canShareFiles());
+  const [shareSupported] = useState(() => canShareImages());
 
   // Label size selection (mm). Presets: 50x25 (clock) and 50x50 (watch),
   // plus a custom size.
@@ -285,14 +285,14 @@ export default function Inventory() {
     return response.data?.zpl || response.zpl || response;
   }, [activeWorkflowBatch, printZpl, getLabelSize]);
 
-  // Generate a PDF preview of the barcodes and show it in the modal.
+  // Generate an image preview of the barcodes and show it in the modal.
   const handlePreview = useCallback(async () => {
     if (!activeWorkflowBatch) return;
     setFormError(null);
     setPreviewLoading(true);
     try {
       const zplData = await getBatchZpl();
-      const blob = await zplToPdfBlob(zplData, getLabelSize().labelarySize);
+      const blob = await zplToImageBlob(zplData, getLabelSize().labelarySize);
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       setPreviewUrl(URL.createObjectURL(blob));
     } catch (err) {
@@ -308,17 +308,17 @@ export default function Inventory() {
     printerError,
   ]);
 
-  // Share the barcode PDF to third-party apps on the device.
+  // Share the barcode image to third-party apps on the device.
   const handleShare = useCallback(async () => {
     if (!activeWorkflowBatch) return;
     setFormError(null);
     setSharing(true);
     try {
       const zplData = await getBatchZpl();
-      const blob = await zplToPdfBlob(zplData, getLabelSize().labelarySize);
-      const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.pdf`;
-      await sharePdf(blob, filename);
-      addToast("success", "Barcode PDF shared");
+      const blob = await zplToImageBlob(zplData, getLabelSize().labelarySize);
+      const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.png`;
+      await shareImage(blob, filename);
+      addToast("success", "Barcode image shared");
     } catch (err) {
       if (err?.name !== "AbortError") {
         // Only treat real failures as errors; a dismissed share sheet is fine.
@@ -806,10 +806,10 @@ export default function Inventory() {
               </GlassButton>
             </div>
             {previewUrl ? (
-              <iframe
+              <img
                 src={previewUrl}
-                title="Barcode Preview"
-                className="w-full h-64 rounded-xl border border-white/30 bg-white"
+                alt="Barcode Preview"
+                className="w-full h-64 object-contain rounded-xl border border-white/30 bg-white"
               />
             ) : (
               <div className="flex items-center justify-center h-40 rounded-xl border border-dashed border-white/40 text-sm text-primary-700/50">
@@ -827,10 +827,7 @@ export default function Inventory() {
         title="Step 2: Confirm Quality & Stock"
         footer={
           <>
-            <GlassButton
-              variant="secondary"
-              onClick={() => setWorkflowStep(1)}
-            >
+            <GlassButton variant="secondary" onClick={() => setWorkflowStep(1)}>
               ← Back
             </GlassButton>
             <GlassButton
