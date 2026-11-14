@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,480 +8,84 @@ import (
 	"strings"
 
 	"backend/internal/models"
-	"backend/internal/repository"
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
+	"backend/internal/printer"
 )
 
-type Handler struct {
-	Repo *repository.Repository
-}
-
-func NewHandler(repo *repository.Repository) *Handler {
-	return &Handler{Repo: repo}
-}
-
-func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		// Headers already written; log the encoding failure for debugging
-		fmt.Printf("[WARN] failed to encode JSON response: %v\n", err)
+// parseSize parses a "WxH" size string (in millimetres) into width and height.
+// Returns the default 50x25mm when the input is empty or invalid.
+func parseSize(size string) (int, int) {
+	width, height := 50, 25
+	if size == "" {
+		return width, height
 	}
+	parts := strings.Split(size, "x")
+	if len(parts) != 2 {
+		return width, height
+	}
+	w, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+	h, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err1 != nil || err2 != nil || w <= 0 || h <= 0 {
+		return width, height
+	}
+	return w, h
 }
 
-func respondError(w http.ResponseWriter, status int, message string) {
-	respondJSON(w, status, models.APIResponse{Status: "error", Message: message})
-}
-
-func (h *Handler) GenerateBarcodes(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GenerateZPL(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ProductType   string  `json:"productType"`
-		Brand         string  `json:"brand"`
-		Model         string  `json:"model"`
-		Quantity      int     `json:"quantity"`
-		PurchasePrice float64 `json:"purchasePrice"`
-		SellingPrice  float64 `json:"sellingPrice"`
+		Brand  string `json:"brand"`
+		Model  string `json:"model"`
+		Price  string `json:"price"`
+		Serial string `json:"serial"`
+		Size   string `json:"size"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if req.Quantity <= 0 || req.ProductType == "" || req.Brand == "" || req.Model == "" {
-		respondError(w, http.StatusBadRequest, "invalid metadata or quantity")
-		return
-	}
-	if req.Quantity > 500 {
-		respondError(w, http.StatusBadRequest, "quantity must not exceed 500")
-		return
-	}
-	if len(req.ProductType) > 100 || len(req.Brand) > 100 || len(req.Model) > 200 {
-		respondError(w, http.StatusBadRequest, "field values exceed maximum length")
+
+	if req.Brand == "" || req.Model == "" || req.Serial == "" {
+		respondError(w, http.StatusBadRequest, "missing required fields (brand, model, serial)")
 		return
 	}
 
-	batchID := uuid.New().String()
+	widthMM, heightMM := parseSize(req.Size)
+	zpl := printer.GenerateWatchTagZPL(req.Brand, req.Model, req.Price, req.Serial, widthMM, heightMM)
 
-	// Generate all candidate serials in memory first (no DB calls)
-	barcodes := make([]string, 0, req.Quantity)
-	seen := make(map[string]bool, req.Quantity)
-	for len(barcodes) < req.Quantity {
-		uid := strings.ToUpper(strings.Split(uuid.New().String(), "-")[0])
-		if !seen[uid] {
-			seen[uid] = true
-			barcodes = append(barcodes, uid)
-		}
+	res := map[string]interface{}{
+		"serial": req.Serial,
+		"zpl":    zpl,
 	}
 
-	// Single batch DB query to check for collisions, then regenerate any conflicts
-	existing, err := h.Repo.FilterExistingSerials(r.Context(), barcodes)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "database error checking serial uniqueness")
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
+}
+
+func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Brand   string   `json:"brand"`
+		Model   string   `json:"model"`
+		Price   string   `json:"price"`
+		Serials []string `json:"serials"`
+		Size    string   `json:"size"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request payload")
 		return
 	}
-	if len(existing) > 0 {
-		// Replace colliding serials with fresh ones
-		for i := range barcodes {
-			if existing[barcodes[i]] {
-				delete(seen, barcodes[i])
-				for {
-					candidate := strings.ToUpper(strings.Split(uuid.New().String(), "-")[0])
-					if !seen[candidate] && !existing[candidate] {
-						barcodes[i] = candidate
-						seen[candidate] = true
-						break
-					}
-				}
-			}
-		}
-	}
 
-	resBarcodes := make([]map[string]interface{}, 0, req.Quantity)
-	for _, serial := range barcodes {
-		resBarcodes = append(resBarcodes, map[string]interface{}{
-			"serial": serial, "barcodeFormat": "CODE128", "barcodeValue": serial,
-		})
-	}
-
-	prod, err := h.Repo.CreateBarcodeBatch(r.Context(), batchID, req.ProductType, req.Brand, req.Model, req.PurchasePrice, req.SellingPrice, barcodes)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	if len(req.Serials) == 0 || req.Brand == "" {
+		respondError(w, http.StatusBadRequest, "missing required fields (brand, serials)")
 		return
+	}
+
+	widthMM, heightMM := parseSize(req.Size)
+	var fullZPL string
+	for _, serial := range req.Serials {
+		fullZPL += printer.GenerateWatchTagZPL(req.Brand, req.Model, req.Price, serial, widthMM, heightMM)
 	}
 
 	res := map[string]interface{}{
-		"batchId":      batchID,
-		"productDraft": map[string]interface{}{"productType": prod.ProductType, "brand": prod.Brand, "model": prod.Model, "purchasePrice": prod.PurchasePrice, "sellingPrice": prod.SellingPrice},
-		"barcodes":     resBarcodes,
-	}
-	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
-}
-
-func (h *Handler) CommitBatch(w http.ResponseWriter, r *http.Request) {
-	batchID := chi.URLParam(r, "batchId")
-	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" {
-		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
-		return
+		"zpl": fullZPL,
 	}
 
-	res, err := h.Repo.CommitBatch(r.Context(), batchID)
-	if err != nil {
-		if strings.Contains(err.Error(), "expired") || strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusUnprocessableEntity, err.Error())
-		} else {
-			respondError(w, http.StatusConflict, err.Error())
-		}
-		return
-	}
-	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
-}
-
-func (h *Handler) RevertBatch(w http.ResponseWriter, r *http.Request) {
-	batchID := chi.URLParam(r, "batchId")
-	if batchID == "" {
-		respondError(w, http.StatusBadRequest, "batchId required")
-		return
-	}
-
-	err := h.Repo.RevertBatch(r.Context(), batchID)
-	if err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Batch reverted"})
-}
-
-func (h *Handler) GetDraftBatches(w http.ResponseWriter, r *http.Request) {
-	drafts, err := h.Repo.GetDraftBatches(r.Context())
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: drafts})
-}
-
-// GetDashboardStats returns aggregated inventory statistics computed in the DB.
-func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.Repo.GetDashboardStats(r.Context())
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to compute dashboard stats")
-		return
-	}
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: stats})
-}
-
-func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
-	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit < 1 || limit > 100 {
-		limit = 50
-	}
-
-	// Optional combined search query parameter (searches across type, brand, and model)
-	search := strings.TrimSpace(r.URL.Query().Get("search"))
-	if len(search) > 100 {
-		search = search[:100]
-	}
-
-	res, err := h.Repo.GetProductsSummary(r.Context(), page, limit, search)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
-}
-
-func (h *Handler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
-	productID := chi.URLParam(r, "id")
-	if productID == "" {
-		respondError(w, http.StatusBadRequest, "missing product ID")
-		return
-	}
-
-	barcodesRemoved, err := h.Repo.DeleteProduct(r.Context(), productID)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-
-	respondJSON(w, http.StatusOK, models.APIResponse{
-		Status:  "success",
-		Message: fmt.Sprintf("Product and %d associated barcodes deleted successfully", barcodesRemoved),
-		Data: map[string]interface{}{
-			"productId":       productID,
-			"barcodesRemoved": barcodesRemoved,
-		},
-	})
-}
-
-func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
-	productID := chi.URLParam(r, "id")
-	if productID == "" {
-		respondError(w, http.StatusBadRequest, "missing product ID")
-		return
-	}
-
-	var req struct {
-		ProductType   string  `json:"productType"`
-		Brand         string  `json:"brand"`
-		Model         string  `json:"model"`
-		PurchasePrice float64 `json:"purchasePrice"`
-		SellingPrice  float64 `json:"sellingPrice"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusUnprocessableEntity, "invalid request payload")
-		return
-	}
-
-	if req.ProductType == "" || req.Brand == "" || req.Model == "" {
-		respondError(w, http.StatusBadRequest, "type, brand, and model are required")
-		return
-	}
-	if len(req.ProductType) > 100 || len(req.Brand) > 100 || len(req.Model) > 200 {
-		respondError(w, http.StatusBadRequest, "field values exceed maximum length")
-		return
-	}
-
-	err := h.Repo.UpdateProduct(r.Context(), productID, req.ProductType, req.Brand, req.Model, req.PurchasePrice, req.SellingPrice)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Product updated successfully"})
-}
-
-func (h *Handler) SearchBarcode(w http.ResponseWriter, r *http.Request) {
-	barcodeValue := chi.URLParam(r, "barcodeValue")
-	if barcodeValue == "" {
-		respondError(w, http.StatusBadRequest, "missing barcode value")
-		return
-	}
-	res, err := h.Repo.SearchBarcode(r.Context(), barcodeValue)
-	if err != nil {
-		if err.Error() == "not found" {
-			respondError(w, http.StatusNotFound, "No matching inventory item found")
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: res})
-}
-
-func (h *Handler) StageCartItem(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" {
-		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
-		return
-	}
-
-	var req struct {
-		Barcode string `json:"barcode"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Barcode == "" {
-		respondError(w, http.StatusUnprocessableEntity, "invalid scan payload")
-		return
-	}
-
-	res, err := h.Repo.StageItem(r.Context(), sessionID, req.Barcode)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else {
-			respondError(w, http.StatusConflict, err.Error())
-		}
-		return
-	}
-	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
-}
-
-func (h *Handler) UnstageCartItem(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	barcode := chi.URLParam(r, "serial")
-	
-	err := h.Repo.UnstageItem(r.Context(), sessionID, barcode)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Item removed from cart"})
-}
-
-func (h *Handler) GetCartItems(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	
-	items, err := h.Repo.GetStagedItems(r.Context(), sessionID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to fetch cart items")
-		return
-	}
-	
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: items})
-}
-
-func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
-	sessionID := chi.URLParam(r, "sessionId")
-	idemKey := r.Header.Get("Idempotency-Key")
-	if idemKey == "" {
-		respondError(w, http.StatusBadRequest, "Idempotency-Key required")
-		return
-	}
-
-	var reqBody struct {
-		DiscountAmount float64 `json:"discountAmount"`
-	}
-	// Decode may fail if body is empty (default 0), but reject malformed JSON
-	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil && r.ContentLength > 0 {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if reqBody.DiscountAmount < 0 {
-		respondError(w, http.StatusBadRequest, "discount amount cannot be negative")
-		return
-	}
-
-	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID, reqBody.DiscountAmount)
-	if err != nil {
-		if strings.Contains(err.Error(), "empty") || strings.Contains(err.Error(), "no longer STAGED") {
-			respondError(w, http.StatusConflict, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-	respondJSON(w, http.StatusCreated, models.APIResponse{Status: "success", Data: res})
-}
-
-// GetSales handles paginated retrieval of sold records
-func (h *Handler) GetSales(w http.ResponseWriter, r *http.Request) {
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 {
-		limit = 50
-	}
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
-	}
-
-	records, err := h.Repo.GetSalesRecords(r.Context(), limit, offset)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to fetch sales records")
-		return
-	}
-	
-	nextOffset := offset + limit
-	var hasNextPage bool
-	if len(records) == limit {
-		hasNextPage = true
-	} else {
-		hasNextPage = false
-	}
-
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"data": records,
-		"nextOffset": nextOffset,
-		"hasNextPage": hasNextPage,
-	})
-}
-
-// ExportSales generates a CSV of all sales and permanently deletes them from the DB
-func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
-	records, err := h.Repo.ExportAndPurgeSales(r.Context())
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to export sales")
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment;filename=sales_export.csv")
-
-	writer := csv.NewWriter(w)
-	defer writer.Flush()
-
-	if err := writer.Write([]string{"Serial", "Batch ID", "Status", "Session ID", "Sold At", "Product Type", "Brand", "Model", "Purchase Price", "Selling Price"}); err != nil {
-		return // Client likely disconnected; cannot write error response (headers already sent)
-	}
-
-	for _, rec := range records {
-		if err := writer.Write([]string{
-			fmt.Sprintf("%v", rec["serial"]),
-			fmt.Sprintf("%v", rec["batchId"]),
-			fmt.Sprintf("%v", rec["status"]),
-			fmt.Sprintf("%v", rec["sessionId"]),
-			fmt.Sprintf("%v", rec["soldAt"]),
-			fmt.Sprintf("%v", rec["productType"]),
-			fmt.Sprintf("%v", rec["brand"]),
-			fmt.Sprintf("%v", rec["model"]),
-			fmt.Sprintf("%v", rec["purchasePrice"]),
-			fmt.Sprintf("%v", rec["sellingPrice"]),
-		}); err != nil {
-			return // Client likely disconnected
-		}
-	}
-}
-
-// GetProductItems returns all barcode items for a product, ordered FIFO (created_at ASC).
-func (h *Handler) GetProductItems(w http.ResponseWriter, r *http.Request) {
-	productID := chi.URLParam(r, "id")
-	if productID == "" {
-		respondError(w, http.StatusBadRequest, "missing product ID")
-		return
-	}
-
-	items, err := h.Repo.GetProductItems(r.Context(), productID)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, "failed to fetch product items")
-		}
-		return
-	}
-
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: items})
-}
-
-// DeleteBarcode deletes a single barcode item (only IN_STOCK or DRAFT).
-func (h *Handler) DeleteBarcode(w http.ResponseWriter, r *http.Request) {
-	serial := chi.URLParam(r, "serial")
-	if serial == "" {
-		respondError(w, http.StatusBadRequest, "missing barcode serial")
-		return
-	}
-
-	_, err := h.Repo.DeleteBarcode(r.Context(), serial)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			respondError(w, http.StatusNotFound, err.Error())
-		} else if strings.Contains(err.Error(), "cannot delete") {
-			respondError(w, http.StatusConflict, err.Error())
-		} else {
-			respondError(w, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-
-	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Barcode deleted successfully"})
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: fmt.Sprintf("Generated ZPL for %d labels", len(req.Serials)), Data: res})
 }
