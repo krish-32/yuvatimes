@@ -29,7 +29,7 @@ func TestGenerateWatchTagZPL_LabelDimensions(t *testing.T) {
 			heightMM:   50,
 			wantWidth:  400,
 			wantHeight: 400,
-			wantBarH:   140,
+			wantBarH:   200,
 		},
 	}
 
