@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Package,
   Plus,
@@ -12,13 +14,15 @@ import {
   Trash2,
   Search,
   X,
-  CheckCircle2,
   AlertTriangle,
+  Eye,
+  Share2,
 } from "lucide-react";
 import GlassCard from "../components/GlassCard";
 import GlassInput from "../components/GlassInput";
 import GlassButton from "../components/GlassButton";
 import GlassModal from "../components/GlassModal";
+import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 import {
   useProducts,
   useDraftBatches,
@@ -30,45 +34,14 @@ import {
   useDeleteProduct,
 } from "../hooks/useInventoryAPI";
 import { useBrowserPrint } from "../hooks/useBrowserPrint";
-
-/* ── Tiny inline toast (memoized to avoid re-renders from parent state changes) */
-const Toast = memo(function Toast({ toast, onDismiss }) {
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(onDismiss, 4000);
-    return () => clearTimeout(t);
-  }, [toast, onDismiss]);
-
-  if (!toast) return null;
-
-  const isSuccess = toast.type === "success";
-  return (
-    <div className="fixed bottom-6 right-6 z-[100] animate-fade-in">
-      <div
-        className={`flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg border backdrop-blur-md ${
-          isSuccess
-            ? "bg-green-50/90 border-green-300 text-green-800"
-            : "bg-red-50/90 border-red-300 text-red-800"
-        }`}
-      >
-        {isSuccess ? (
-          <CheckCircle2 size={18} className="text-green-600 shrink-0" />
-        ) : (
-          <AlertTriangle size={18} className="text-red-600 shrink-0" />
-        )}
-        <span className="text-sm font-medium">{toast.message}</span>
-        <button
-          onClick={onDismiss}
-          className="ml-2 opacity-60 hover:opacity-100"
-        >
-          <X size={14} />
-        </button>
-      </div>
-    </div>
-  );
-});
+import { useToastStore } from "../store/useToastStore";
+import { inventoryKeys } from "../lib/queryClient";
+import { zplToImageBlob, shareImage, canShareImages } from "../utils/zplPdf";
 
 export default function Inventory() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   /* ── Existing query hooks ──────────────────────────────────── */
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -99,6 +72,34 @@ export default function Inventory() {
   const [workflowStep, setWorkflowStep] = useState(0);
   const [actionBatchId, setActionBatchId] = useState(null);
 
+  // Barcode preview & share state
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareSupported] = useState(() => canShareImages());
+
+  // Label size selection (mm). Presets: 50x25 (clock) and 50x50 (watch),
+  // plus a custom size.
+  const [labelSize, setLabelSize] = useState("50x25");
+  const [customWidth, setCustomWidth] = useState(50);
+  const [customHeight, setCustomHeight] = useState(25);
+
+  // Revoke the preview object URL when the Step 1 modal is closed.
+  useEffect(() => {
+    if (workflowStep !== 1 && previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  }, [workflowStep, previewUrl]);
+
+  // Clear the previous preview whenever label dimensions change.
+useEffect(() => {
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  }
+}, [labelSize, customWidth, customHeight]);
+
   const { mutateAsync: updateProduct, isPending: isUpdatingProduct } =
     useUpdateProduct();
   const [editingProduct, setEditingProduct] = useState(null);
@@ -110,23 +111,11 @@ export default function Inventory() {
   const [deletingProduct, setDeletingProduct] = useState(null);
 
   /* ── Toast state ───────────────────────────────────────────── */
-  const [toast, setToast] = useState(null);
-  const dismissToast = useCallback(() => setToast(null), []);
+  const addToast = useToastStore((state) => state.addToast);
 
-  /* ── Search handlers with debounce ─────────────────────────── */
-  const debounceRef = useRef(null);
-
+  /* ── Search handlers (button-triggered only) ────────────────── */
   const handleApplySearch = useCallback(() => {
     setAppliedSearch(searchInput.trim());
-  }, [searchInput]);
-
-  // Debounce: auto-trigger search 400ms after user stops typing
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setAppliedSearch(searchInput.trim());
-    }, 400);
-    return () => clearTimeout(debounceRef.current);
   }, [searchInput]);
 
   const handleClearSearch = useCallback(() => {
@@ -162,9 +151,9 @@ export default function Inventory() {
         },
       });
       setEditingProduct(null);
-      setToast({ type: "success", message: "Product updated successfully" });
+      addToast("success", "Product updated successfully");
     } catch (err) {
-      setToast({ type: "error", message: `Failed to update: ${err.message}` });
+      addToast("error", `Failed to update: ${err.message}`);
     }
   };
 
@@ -175,17 +164,30 @@ export default function Inventory() {
 
   const handleDeleteProduct = async () => {
     if (!deletingProduct?.id) return;
+    const queryKey = inventoryKeys.products(appliedSearch);
+
+    // Cancel any in-flight refetches so they don't clobber the optimistic state
+    await queryClient.cancelQueries({ queryKey });
+    const previousProducts = queryClient.getQueryData(queryKey) || [];
+
+    // ── Optimistic Update: remove the product row immediately ──
+    queryClient.setQueryData(queryKey, (old = []) =>
+      old.filter((p) => p.id !== deletingProduct.id),
+    );
+    setDeletingProduct(null);
+
     try {
       const result = await deleteProduct(deletingProduct.id);
       const barcodesRemoved =
         result?.data?.barcodesRemoved ?? result?.barcodesRemoved ?? 0;
-      setDeletingProduct(null);
-      setToast({
-        type: "success",
-        message: `Product and ${barcodesRemoved} barcode(s) deleted successfully`,
-      });
+      addToast(
+        "success",
+        `Product and ${barcodesRemoved} barcode(s) deleted successfully`,
+      );
     } catch (err) {
-      setToast({ type: "error", message: `Delete failed: ${err.message}` });
+      // ── Rollback: restore the previous product list ──
+      queryClient.setQueryData(queryKey, previousProducts);
+      addToast("error", `Delete failed: ${err.message}`);
     }
   };
 
@@ -255,24 +257,99 @@ export default function Inventory() {
     }
   };
 
+  // Resolve the selected label size into mm dimensions and a Labelary size string.
+  const getLabelSize = useCallback(() => {
+    let widthMM = 50;
+    let heightMM = 25;
+    if (labelSize === "50x50") {
+      widthMM = 50;
+      heightMM = 50;
+    } else if (labelSize === "custom") {
+      widthMM = Number(customWidth) || 50;
+      heightMM = Number(customHeight) || 25;
+    }
+    const labelarySize = `${(widthMM / 25.4).toFixed(2)}x${(heightMM / 25.4).toFixed(2)}`;
+    return {
+      widthMM,
+      heightMM,
+      sizeStr: `${widthMM}x${heightMM}`,
+      labelarySize,
+    };
+  }, [labelSize, customWidth, customHeight]);
+
+  // Fetch the ZPL code for the active workflow batch from the backend.
+  const getBatchZpl = useCallback(async () => {
+    if (!activeWorkflowBatch) return null;
+    const payload = {
+      brand: activeWorkflowBatch.brand,
+      model: activeWorkflowBatch.model,
+      price: activeWorkflowBatch.sellingPrice
+        ? activeWorkflowBatch.sellingPrice.toString()
+        : "0",
+      serials: activeWorkflowBatch.serials,
+      size: getLabelSize().sizeStr,
+    };
+    const response = await printZpl(payload);
+    return response.data?.zpl || response.zpl || response;
+  }, [activeWorkflowBatch, printZpl, getLabelSize]);
+
+  // Generate an image preview of the barcodes and show it in the modal.
+  const handlePreview = useCallback(async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
+    setPreviewLoading(true);
+    try {
+      const zplData = await getBatchZpl();
+      const blob = await zplToImageBlob(zplData, getLabelSize().labelarySize);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(URL.createObjectURL(blob));
+    } catch (err) {
+      setFormError(`Failed to preview: ${err.message || printerError}`);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [
+    activeWorkflowBatch,
+    getBatchZpl,
+    getLabelSize,
+    previewUrl,
+    printerError,
+  ]);
+
+  // Share the barcode image to third-party apps on the device.
+  const handleShare = useCallback(async () => {
+    if (!activeWorkflowBatch) return;
+    setFormError(null);
+    setSharing(true);
+    try {
+      const zplData = await getBatchZpl();
+      const blob = await zplToImageBlob(zplData, getLabelSize().labelarySize);
+      const filename = `barcodes-${activeWorkflowBatch.brand}-${activeWorkflowBatch.model}.png`;
+      await shareImage(blob, filename);
+      addToast("success", "Barcode image shared");
+    } catch (err) {
+      if (err?.name !== "AbortError") {
+        // Only treat real failures as errors; a dismissed share sheet is fine.
+        setFormError(`Failed to share: ${err.message || printerError}`);
+        return;
+      }
+    } finally {
+      setSharing(false);
+    }
+    // After sharing (or dismissing the share sheet), show the in-stock
+    // confirmation instead of the preview UI.
+    setWorkflowStep(2);
+  }, [activeWorkflowBatch, getBatchZpl, getLabelSize, printerError, addToast]);
+
   const handleSilentPrint = async () => {
     if (!activeWorkflowBatch) return;
     setFormError(null);
     try {
-      const payload = {
-        brand: activeWorkflowBatch.brand,
-        model: activeWorkflowBatch.model,
-        price: activeWorkflowBatch.sellingPrice
-          ? activeWorkflowBatch.sellingPrice.toString()
-          : "0",
-        serials: activeWorkflowBatch.serials,
-      };
       // 1. Get the ZPL code from the backend
-      const response = await printZpl(payload);
-      const zplData = response.data?.zpl || response.zpl || response;
+      const zplData = await getBatchZpl();
 
       // 2. Convert ZPL to Image via Labelary and trigger window.print()
-      await printZplToDevice(zplData);
+      await printZplToDevice(zplData, getLabelSize().labelarySize);
 
       // Automatically transition to step 2 after successful print dispatch
       setWorkflowStep(2);
@@ -369,10 +446,21 @@ export default function Inventory() {
         </td>
         <td className="px-6 py-3 text-sm text-center">
           <div className="flex items-center justify-center gap-1">
+            {p.id && (
+              <button
+                onClick={() => navigate(`/inventory/products/${p.id}`)}
+                className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                title="View Product Items"
+                aria-label={`View items for ${p.brand} ${p.model}`}
+              >
+                <Eye size={16} />
+              </button>
+            )}
             <button
               onClick={() => openEditModal(p)}
               className="p-1.5 text-primary-500 hover:text-primary-700 hover:bg-primary-500/10 rounded-lg transition-colors"
               title="Edit Product"
+              aria-label={`Edit ${p.brand} ${p.model}`}
             >
               <Pencil size={16} />
             </button>
@@ -380,6 +468,7 @@ export default function Inventory() {
               onClick={() => openDeleteModal(p)}
               className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-500/10 rounded-lg transition-colors"
               title="Delete Product"
+              aria-label={`Delete ${p.brand} ${p.model}`}
             >
               <Trash2 size={16} />
             </button>
@@ -417,18 +506,27 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Error banner */}
-      {(productsError || batchesError || formError) && (
+      {/* API error — full styled display */}
+      {(productsError || batchesError) && !formError && (
+        <ErrorDisplay
+          status={getErrorType(productsError || batchesError)}
+          errorMessage={(productsError || batchesError)?.message}
+          onRetry={handleRefresh}
+          showHomeButton={false}
+          showBackButton={false}
+        />
+      )}
+
+      {/* Form validation error — inline banner */}
+      {formError && (
         <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-secondary-600 mt-0.5" size={20} />
             <div>
               <h3 className="font-semibold text-secondary-800">
-                Error Occurred
+                Validation Error
               </h3>
-              <p className="text-sm text-secondary-700">
-                {formError || productsError?.message || batchesError?.message}
-              </p>
+              <p className="text-sm text-secondary-700">{formError}</p>
             </div>
           </div>
         </GlassCard>
@@ -436,8 +534,11 @@ export default function Inventory() {
 
       {/* ── Search / Filter Bar ──────────────────────────────── */}
       <GlassCard className="!py-3 !px-5">
-        <div className="flex items-center gap-3">
-          <Search size={18} className="text-primary-600 shrink-0" />
+        <div className="search-bar-container flex items-center gap-3">
+          <Search
+            size={18}
+            className="text-primary-600 shrink-0 hidden sm:block"
+          />
           <input
             type="text"
             placeholder="Search by product type, brand, or model…"
@@ -445,12 +546,13 @@ export default function Inventory() {
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleApplySearch()}
             maxLength={100}
-            className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40"
+            className="glass-input flex-1 px-4 py-2 text-sm text-primary-900 bg-white/40 min-w-0"
+            id="inventory-search-input"
           />
-          <div className="flex gap-2 shrink-0">
+          <div className="search-bar-actions flex gap-2 shrink-0">
             <GlassButton onClick={handleApplySearch} className="!py-2 !px-4">
               <Search size={14} />
-              Search
+              <span className="hidden sm:inline">Search</span>
             </GlassButton>
             {hasActiveSearch && (
               <GlassButton
@@ -459,13 +561,13 @@ export default function Inventory() {
                 className="!py-2 !px-4"
               >
                 <X size={14} />
-                Clear
+                <span className="hidden sm:inline">Clear</span>
               </GlassButton>
             )}
           </div>
         </div>
         {hasActiveSearch && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-primary-700/70">
+          <div className="mt-2 flex items-center gap-2 text-xs text-primary-700/70 flex-wrap">
             <span>Searching for:</span>
             <span className="px-2 py-0.5 rounded-full bg-primary-500/10 text-primary-700 font-medium">
               &ldquo;{appliedSearch}&rdquo;
@@ -613,6 +715,16 @@ export default function Inventory() {
             <GlassButton variant="secondary" onClick={() => setWorkflowStep(0)}>
               Cancel
             </GlassButton>
+            {shareSupported && (
+              <GlassButton
+                variant="secondary"
+                onClick={handleShare}
+                isLoading={sharing}
+              >
+                <Share2 size={16} />
+                Share
+              </GlassButton>
+            )}
             <GlassButton onClick={handleSilentPrint} isLoading={isPrinting}>
               <Printer size={16} />
               Print Barcode
@@ -640,6 +752,79 @@ export default function Inventory() {
               <span>{activeWorkflowBatch?.serials?.length || 0}</span>
             </div>
           </div>
+
+          {/* Label size selector */}
+          <div className="space-y-2">
+            <span className="text-sm font-semibold">Label Size</span>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "50x25", label: "50×25mm", hint: "Watch" },
+                { value: "50x50", label: "50×50mm", hint: "Clock" },
+                { value: "custom", label: "Custom", hint: "Set size" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setLabelSize(opt.value)}
+                  className={`px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
+                    labelSize === opt.value
+                      ? "bg-primary-500 text-white border-primary-500 shadow"
+                      : "bg-white/40 text-primary-700 border-white/50 hover:bg-white/60"
+                  }`}
+                >
+                  {opt.label}
+                  <span className="block text-[10px] font-normal opacity-80">
+                    {opt.hint}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {labelSize === "custom" && (
+              <div className="grid grid-cols-2 gap-3">
+                <GlassInput
+                  label="Width (mm)"
+                  type="number"
+                  min="10"
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(Number(e.target.value))}
+                />
+                <GlassInput
+                  label="Height (mm)"
+                  type="number"
+                  min="10"
+                  value={customHeight}
+                  onChange={(e) => setCustomHeight(Number(e.target.value))}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Barcode preview */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">Barcode Preview</span>
+              <GlassButton
+                variant="secondary"
+                onClick={handlePreview}
+                isLoading={previewLoading}
+                className="!py-1.5 !px-3 !text-xs"
+              >
+                <Eye size={14} />
+                {previewUrl ? "Refresh Preview" : "Generate Preview"}
+              </GlassButton>
+            </div>
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt="Barcode Preview"
+                className="w-full h-64 object-contain rounded-xl border border-white/30 bg-white"
+              />
+            ) : (
+              <div className="flex items-center justify-center h-40 rounded-xl border border-dashed border-white/40 text-sm text-primary-700/50">
+                Click &ldquo;Generate Preview&rdquo; to see the barcode labels.
+              </div>
+            )}
+          </div>
         </div>
       </GlassModal>
 
@@ -650,6 +835,9 @@ export default function Inventory() {
         title="Step 2: Confirm Quality & Stock"
         footer={
           <>
+            <GlassButton variant="secondary" onClick={() => setWorkflowStep(1)}>
+              ← Back
+            </GlassButton>
             <GlassButton
               variant="secondary"
               onClick={() => handleConfirmStock(false)}
@@ -931,9 +1119,6 @@ export default function Inventory() {
           </div>
         )}
       </GlassModal>
-
-      {/* ── Toast Notification ───────────────────────────────── */}
-      <Toast toast={toast} onDismiss={dismissToast} />
     </div>
   );
 }

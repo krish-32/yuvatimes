@@ -25,7 +25,10 @@ func NewHandler(repo *repository.Repository) *Handler {
 func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		// Headers already written; log the encoding failure for debugging
+		fmt.Printf("[WARN] failed to encode JSON response: %v\n", err)
+	}
 }
 
 func respondError(w http.ResponseWriter, status int, message string) {
@@ -347,8 +350,15 @@ func (h *Handler) CompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	var reqBody struct {
 		DiscountAmount float64 `json:"discountAmount"`
 	}
-	// Decode may fail if body is empty, which is fine (default 0)
-	json.NewDecoder(r.Body).Decode(&reqBody)
+	// Decode may fail if body is empty (default 0), but reject malformed JSON
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil && r.ContentLength > 0 {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if reqBody.DiscountAmount < 0 {
+		respondError(w, http.StatusBadRequest, "discount amount cannot be negative")
+		return
+	}
 
 	res, err := h.Repo.CompleteCheckout(r.Context(), sessionID, reqBody.DiscountAmount)
 	if err != nil {
@@ -411,10 +421,12 @@ func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
-	writer.Write([]string{"Serial", "Batch ID", "Status", "Session ID", "Sold At", "Product Type", "Brand", "Model", "Purchase Price", "Selling Price"})
+	if err := writer.Write([]string{"Serial", "Batch ID", "Status", "Session ID", "Sold At", "Product Type", "Brand", "Model", "Purchase Price", "Selling Price"}); err != nil {
+		return // Client likely disconnected; cannot write error response (headers already sent)
+	}
 
 	for _, rec := range records {
-		writer.Write([]string{
+		if err := writer.Write([]string{
 			fmt.Sprintf("%v", rec["serial"]),
 			fmt.Sprintf("%v", rec["batchId"]),
 			fmt.Sprintf("%v", rec["status"]),
@@ -425,6 +437,52 @@ func (h *Handler) ExportSales(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("%v", rec["model"]),
 			fmt.Sprintf("%v", rec["purchasePrice"]),
 			fmt.Sprintf("%v", rec["sellingPrice"]),
-		})
+		}); err != nil {
+			return // Client likely disconnected
+		}
 	}
+}
+
+// GetProductItems returns all barcode items for a product, ordered FIFO (created_at ASC).
+func (h *Handler) GetProductItems(w http.ResponseWriter, r *http.Request) {
+	productID := chi.URLParam(r, "id")
+	if productID == "" {
+		respondError(w, http.StatusBadRequest, "missing product ID")
+		return
+	}
+
+	items, err := h.Repo.GetProductItems(r.Context(), productID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, "failed to fetch product items")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Data: items})
+}
+
+// DeleteBarcode deletes a single barcode item (only IN_STOCK or DRAFT).
+func (h *Handler) DeleteBarcode(w http.ResponseWriter, r *http.Request) {
+	serial := chi.URLParam(r, "serial")
+	if serial == "" {
+		respondError(w, http.StatusBadRequest, "missing barcode serial")
+		return
+	}
+
+	_, err := h.Repo.DeleteBarcode(r.Context(), serial)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, err.Error())
+		} else if strings.Contains(err.Error(), "cannot delete") {
+			respondError(w, http.StatusConflict, err.Error())
+		} else {
+			respondError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.APIResponse{Status: "success", Message: "Barcode deleted successfully"})
 }

@@ -6,11 +6,11 @@ import {
   ScanLine,
   ArrowRight,
   Clock,
-  AlertCircle,
   Loader2,
 } from "lucide-react";
 import { useDashboardStats } from "../hooks/useInventoryAPI";
 import GlassCard from "../components/GlassCard";
+import ErrorDisplay, { getErrorType } from "../components/ErrorDisplay";
 
 export default function Dashboard() {
   const {
@@ -55,6 +55,18 @@ export default function Dashboard() {
     },
   ];
 
+  if (loadError) {
+    const errorType = getErrorType(loadError);
+    return (
+      <ErrorDisplay
+        status={errorType}
+        errorMessage={loadError.message}
+        onRetry={() => window.location.reload()}
+        showBackButton={false}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -66,18 +78,6 @@ export default function Dashboard() {
           Overview of your watch inventory and sales
         </p>
       </div>
-
-      {/* Error banner */}
-      {loadError && (
-        <GlassCard className="!bg-secondary-500/20 !border-secondary-400/50">
-          <div className="flex items-center gap-3 text-secondary-700">
-            <AlertCircle size={20} />
-            <span className="text-sm font-medium">
-              Could not load products: {loadError.message}
-            </span>
-          </div>
-        </GlassCard>
-      )}
 
       {loadingStats && (
         <div className="flex justify-center p-8">

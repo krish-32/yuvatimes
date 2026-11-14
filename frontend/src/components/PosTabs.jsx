@@ -4,7 +4,7 @@ import { usePosStore } from "../store/usePosStore";
 import GlassModal from "./GlassModal";
 import GlassButton from "./GlassButton";
 import { posService } from "../api/apiCalls";
-import { queryClient, inventoryKeys } from "../lib/queryClient";
+import { queryClient, inventoryKeys, dashboardKeys } from "../lib/queryClient";
 
 export default function PosTabs() {
   const {
@@ -42,7 +42,8 @@ export default function PosTabs() {
         removeSession(tabToRemove.id);
         setTabToRemove(null);
         setIsRemoving(false);
-        queryClient.invalidateQueries({ queryKey: inventoryKeys.products() });
+        queryClient.invalidateQueries({ queryKey: inventoryKeys.all });
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
       }
     }
   };
