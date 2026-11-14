@@ -51,21 +51,21 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 	return zpl
 }
 
-// GenerateWatchTagZPLPair builds a ZPL label with two 50x25mm stickers side by
-// side on a single 100x25mm label. Each sticker keeps the standard layout and
+// GenerateWatchTagZPLPair builds a ZPL label with two 48x24mm stickers side by
+// side on a single 96x24mm label. Each sticker keeps the standard layout and
 // barcode size/quality (module width 3, height 70, font 30).
 func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string) string {
 	zpl := fmt.Sprintf(`^XA
-^PW800
-^LL200
+^PW768
+^LL192
 ^FO10,32^A0N,30,30^FB250,1,0,L^FD%s^FS
-^FO0,32^A0N,30,30^FB400,1,0,R^FD%s^FS
+^FO0,32^A0N,30,30^FB384,1,0,R^FD%s^FS
 ^FO10,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
 ^FO10,148^A0N,30,30^FD%s^FS
-^FO410,32^A0N,30,30^FB250,1,0,L^FD%s^FS
-^FO400,32^A0N,30,30^FB400,1,0,R^FD%s^FS
-^FO410,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
-^FO410,148^A0N,30,30^FD%s^FS
+^FO394,32^A0N,30,30^FB250,1,0,L^FD%s^FS
+^FO384,32^A0N,30,30^FB384,1,0,R^FD%s^FS
+^FO394,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
+^FO394,148^A0N,30,30^FD%s^FS
 ^XZ`,
 		model, "Rs. "+price, serial1, serial1,
 		model, "Rs. "+price, serial2, serial2,
@@ -73,15 +73,15 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string) strin
 	return zpl
 }
 
-// GenerateWatchTagZPLSingleWide builds a 100x25mm label with a single sticker
+// GenerateWatchTagZPLSingleWide builds a 96x24mm label with a single sticker
 // on the left half. Used for an odd number of serials so every page stays the
-// same size (100x25mm) and the remaining sticker aligns on the next page.
+// same size (96x24mm) and the remaining sticker aligns on the next page.
 func GenerateWatchTagZPLSingleWide(brand, model, price, serial string) string {
 	zpl := fmt.Sprintf(`^XA
-^PW800
-^LL200
+^PW768
+^LL192
 ^FO10,32^A0N,30,30^FB250,1,0,L^FD%s^FS
-^FO0,32^A0N,30,30^FB400,1,0,R^FD%s^FS
+^FO0,32^A0N,30,30^FB384,1,0,R^FD%s^FS
 ^FO10,68^BY3,3,70^BCN,70,N,N,N^FD%s^FS
 ^FO10,148^A0N,30,30^FD%s^FS
 ^XZ`,

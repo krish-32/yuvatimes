@@ -78,9 +78,9 @@ export default function Inventory() {
   const [sharing, setSharing] = useState(false);
   const [shareSupported] = useState(() => canShareFiles());
 
-  // Label size selection (mm). Presets: 50x25 (clock) and 50x50 (watch),
+  // Label size selection (mm). Presets: 48x24 (watch) and 50x50 (clock),
   // plus a custom size.
-  const [labelSize, setLabelSize] = useState("50x25");
+  const [labelSize, setLabelSize] = useState("48x24");
   const [customWidth, setCustomWidth] = useState(50);
   const [customHeight, setCustomHeight] = useState(25);
 
@@ -259,21 +259,21 @@ useEffect(() => {
 
   // Resolve the selected label size into mm dimensions and a Labelary size string.
   // Labelary expects the size in inches; use whole-inch values (e.g. "2x1",
-  // "2x2") to avoid API failures with decimal sizes. For 50x25mm with 2+ serials,
-  // stickers are printed two per page side by side (100x25mm -> "4x1").
+  // "2x2") to avoid API failures with decimal sizes. For 48x24mm with 2+ serials,
+  // stickers are printed two per page side by side (96x24mm -> "4x1").
   const getLabelSize = useCallback(() => {
-    let widthMM = 50;
-    let heightMM = 25;
+    let widthMM = 48;
+    let heightMM = 24;
     if (labelSize === "50x50") {
       widthMM = 50;
       heightMM = 50;
     } else if (labelSize === "custom") {
-      widthMM = Number(customWidth) || 50;
-      heightMM = Number(customHeight) || 25;
+      widthMM = Number(customWidth) || 48;
+      heightMM = Number(customHeight) || 24;
     }
 
     const serialCount = activeWorkflowBatch?.serials?.length || 1;
-    const sideBySide = heightMM === 25 && serialCount >= 2;
+    const sideBySide = heightMM === 24 && serialCount >= 2;
     const renderWidthMM = sideBySide ? widthMM * 2 : widthMM;
 
     const labelarySize = `${Math.round(renderWidthMM / 25.4)}x${Math.round(heightMM / 25.4)}`;
@@ -766,7 +766,7 @@ useEffect(() => {
             <span className="text-sm font-semibold">Label Size</span>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { value: "50x25", label: "50×25mm", hint: "Watch" },
+                { value: "48x24", label: "48×24mm", hint: "Watch" },
                 { value: "50x50", label: "50×50mm", hint: "Clock" },
                 { value: "custom", label: "Custom", hint: "Set size" },
               ].map((opt) => (
