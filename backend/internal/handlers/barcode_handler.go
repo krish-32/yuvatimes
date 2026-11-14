@@ -98,10 +98,10 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 	widthMM, heightMM := parseSize(req.Size)
 	var fullZPL string
 
-	// For 48x24mm labels, print two stickers side by side per 96x24mm page.
-	// An odd remaining sticker goes on the next page (left half of a 96x24mm
-	// label) so every page stays the same size. Barcode size/quality unchanged.
-	if heightMM == 24 {
+	// For 48x24mm and 48x48mm labels, print two stickers side by side per page.
+	// An odd remaining sticker goes on the next page (left half of a wide label)
+	// so every page stays the same size. Barcode size/quality unchanged.
+	if heightMM == 24 || heightMM == 48 {
 		for i := 0; i+1 < len(req.Serials); i += 2 {
 			fullZPL += printer.GenerateWatchTagZPLPair(
 				req.Brand,
@@ -109,6 +109,8 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 				req.Price,
 				req.Serials[i],
 				req.Serials[i+1],
+				widthMM,
+				heightMM,
 			)
 		}
 		if len(req.Serials)%2 == 1 {
@@ -117,6 +119,8 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 				req.Model,
 				req.Price,
 				req.Serials[len(req.Serials)-1],
+				widthMM,
+				heightMM,
 			)
 		}
 	} else {

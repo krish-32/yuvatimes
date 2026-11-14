@@ -24,11 +24,11 @@ func TestGenerateWatchTagZPL_LabelDimensions(t *testing.T) {
 			wantBarH:   70,
 		},
 		{
-			name:       "50x50mm",
-			widthMM:    50,
-			heightMM:   50,
-			wantWidth:  400,
-			wantHeight: 400,
+			name:       "48x48mm",
+			widthMM:    48,
+			heightMM:   48,
+			wantWidth:  384,
+			wantHeight: 384,
 			wantBarH:   200,
 		},
 	}
@@ -81,8 +81,8 @@ func TestGenerateWatchTagZPL_SameContentForBothSizes(t *testing.T) {
 		"TestModel",
 		"1500",
 		"SN123456",
-		50,
-		50,
+		48,
+		48,
 	)
 
 	expectedFields := []string{

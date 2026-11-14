@@ -259,21 +259,21 @@ useEffect(() => {
 
   // Resolve the selected label size into mm dimensions and a Labelary size string.
   // Labelary expects the size in inches; use whole-inch values (e.g. "2x1",
-  // "2x2") to avoid API failures with decimal sizes. For 48x24mm with 2+ serials,
-  // stickers are printed two per page side by side (96x24mm -> "4x1").
+  // "2x2") to avoid API failures with decimal sizes. For 48x24mm and 48x48mm
+  // with 2+ serials, stickers are printed two per page side by side.
   const getLabelSize = useCallback(() => {
     let widthMM = 48;
     let heightMM = 24;
-    if (labelSize === "50x50") {
-      widthMM = 50;
-      heightMM = 50;
+    if (labelSize === "48x48") {
+      widthMM = 48;
+      heightMM = 48;
     } else if (labelSize === "custom") {
       widthMM = Number(customWidth) || 48;
       heightMM = Number(customHeight) || 24;
     }
 
     const serialCount = activeWorkflowBatch?.serials?.length || 1;
-    const sideBySide = heightMM === 24 && serialCount >= 2;
+    const sideBySide = (heightMM === 24 || heightMM === 48) && serialCount >= 2;
     const renderWidthMM = sideBySide ? widthMM * 2 : widthMM;
 
     const labelarySize = `${Math.round(renderWidthMM / 25.4)}x${Math.round(heightMM / 25.4)}`;
@@ -767,7 +767,7 @@ useEffect(() => {
             <div className="grid grid-cols-3 gap-2">
               {[
                 { value: "48x24", label: "48×24mm", hint: "Watch" },
-                { value: "50x50", label: "50×50mm", hint: "Clock" },
+                { value: "48x48", label: "48×48mm", hint: "Clock" },
                 { value: "custom", label: "Custom", hint: "Set size" },
               ].map((opt) => (
                 <button
