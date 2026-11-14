@@ -45,9 +45,9 @@ func GenerateWatchTagZPL(brand, model, price, serial string, widthMM, heightMM i
 // a single (2x width) x height label. Each sticker keeps the standard layout
 // and barcode size/quality for the given height.
 func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string, widthMM, heightMM int) string {
-	width := widthMM * 8
+	stickerWidth := widthMM * 8
+	totalWidth := widthMM * 2 * 8
 	height := heightMM * 8
-	half := width / 2
 	l := layoutFor(heightMM)
 
 	zpl := fmt.Sprintf(`^XA
@@ -62,15 +62,15 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string, width
 ^FO%d,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
 ^FO%d,%d^A0N,%d,%d^FD%s^FS
 ^XZ`,
-		width, height,
+		totalWidth, height,
 		l.topY, l.topFont, l.topFont, model,
-		l.topY, l.topFont, l.topFont, half, "Rs. "+price,
+		l.topY, l.topFont, l.topFont, stickerWidth, "Rs. "+price,
 		l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial1,
 		l.bottomY, l.bottomFont, l.bottomFont, serial1,
-		half+10, l.topY, l.topFont, l.topFont, model,
-		half, l.topY, l.topFont, l.topFont, half, "Rs. "+price,
-		half+10, l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial2,
-		half+10, l.bottomY, l.bottomFont, l.bottomFont, serial2,
+		stickerWidth+10, l.topY, l.topFont, l.topFont, model,
+		stickerWidth, l.topY, l.topFont, l.topFont, stickerWidth, "Rs. "+price,
+		stickerWidth+10, l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial2,
+		stickerWidth+10, l.bottomY, l.bottomFont, l.bottomFont, serial2,
 	)
 	return zpl
 }
@@ -79,9 +79,9 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string, width
 // single sticker on the left half. Used for an odd number of serials so every
 // page stays the same size and the remaining sticker aligns on the next page.
 func GenerateWatchTagZPLSingleWide(brand, model, price, serial string, widthMM, heightMM int) string {
-	width := widthMM * 8
+	stickerWidth := widthMM * 8
+	totalWidth := widthMM * 2 * 8
 	height := heightMM * 8
-	half := width / 2
 	l := layoutFor(heightMM)
 
 	zpl := fmt.Sprintf(`^XA
@@ -92,9 +92,9 @@ func GenerateWatchTagZPLSingleWide(brand, model, price, serial string, widthMM, 
 ^FO10,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
 ^FO10,%d^A0N,%d,%d^FD%s^FS
 ^XZ`,
-		width, height,
+		totalWidth, height,
 		l.topY, l.topFont, l.topFont, model,
-		l.topY, l.topFont, l.topFont, half, "Rs. "+price,
+		l.topY, l.topFont, l.topFont, stickerWidth, "Rs. "+price,
 		l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial,
 		l.bottomY, l.bottomFont, l.bottomFont, serial,
 	)
