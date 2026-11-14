@@ -96,7 +96,6 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	widthMM, heightMM := parseSize(req.Size)
-
 	var fullZPL string
 
 	for _, serial := range req.Serials {
