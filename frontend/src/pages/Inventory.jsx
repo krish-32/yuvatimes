@@ -92,6 +92,14 @@ export default function Inventory() {
     }
   }, [workflowStep, previewUrl]);
 
+  // Clear the previous preview whenever label dimensions change.
+useEffect(() => {
+  if (previewUrl) {
+    URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  }
+}, [labelSize, customWidth, customHeight]);
+
   const { mutateAsync: updateProduct, isPending: isUpdatingProduct } =
     useUpdateProduct();
   const [editingProduct, setEditingProduct] = useState(null);
