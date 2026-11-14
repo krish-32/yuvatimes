@@ -258,6 +258,9 @@ useEffect(() => {
   };
 
   // Resolve the selected label size into mm dimensions and a Labelary size string.
+  // Labelary expects the size in inches; use whole-inch values (e.g. "2x1",
+  // "2x2") to avoid API failures with decimal sizes. For 50x25mm with exactly
+  // 2 serials, the two stickers are printed side by side (100x25mm -> "4x1").
   const getLabelSize = useCallback(() => {
     let widthMM = 50;
     let heightMM = 25;
@@ -268,14 +271,19 @@ useEffect(() => {
       widthMM = Number(customWidth) || 50;
       heightMM = Number(customHeight) || 25;
     }
-    const labelarySize = `${(widthMM / 25.4).toFixed(2)}x${(heightMM / 25.4).toFixed(2)}`;
+
+    const serialCount = activeWorkflowBatch?.serials?.length || 1;
+    const sideBySide = heightMM === 25 && serialCount === 2;
+    const renderWidthMM = sideBySide ? widthMM * 2 : widthMM;
+
+    const labelarySize = `${Math.round(renderWidthMM / 25.4)}x${Math.round(heightMM / 25.4)}`;
     return {
       widthMM,
       heightMM,
       sizeStr: `${widthMM}x${heightMM}`,
       labelarySize,
     };
-  }, [labelSize, customWidth, customHeight]);
+  }, [labelSize, customWidth, customHeight, activeWorkflowBatch]);
 
   // Fetch the ZPL code for the active workflow batch from the backend.
   const getBatchZpl = useCallback(async () => {

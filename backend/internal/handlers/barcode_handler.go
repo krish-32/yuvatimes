@@ -98,15 +98,27 @@ func (h *Handler) PrintZPL(w http.ResponseWriter, r *http.Request) {
 	widthMM, heightMM := parseSize(req.Size)
 	var fullZPL string
 
-	for _, serial := range req.Serials {
-		fullZPL += printer.GenerateWatchTagZPL(
+	// For 50x25mm labels with exactly 2 serials, print the two stickers side by
+	// side on a single 100x25mm label (keeps barcode size/quality unchanged).
+	if heightMM == 25 && len(req.Serials) == 2 {
+		fullZPL += printer.GenerateWatchTagZPLPair(
 			req.Brand,
 			req.Model,
 			req.Price,
-			serial,
-			widthMM,
-			heightMM,
+			req.Serials[0],
+			req.Serials[1],
 		)
+	} else {
+		for _, serial := range req.Serials {
+			fullZPL += printer.GenerateWatchTagZPL(
+				req.Brand,
+				req.Model,
+				req.Price,
+				serial,
+				widthMM,
+				heightMM,
+			)
+		}
 	}
 
 	res := map[string]interface{}{
