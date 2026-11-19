@@ -16,6 +16,17 @@ func layoutFor(heightMM int) watchLayout {
 	return watchLayout{30, 30, 3, 70, 32, 68, 148}
 }
 
+// mediaSuffix returns extra ZPL to append after ^LL for the 48x48mm layout.
+// ^MNN tells the printer to use gap/notch sensing between stickers, so the
+// label is not fed to the fixed length and the next sticker starts correctly.
+// The 48x24mm layout returns an empty string and is left unchanged.
+func mediaSuffix(heightMM int) string {
+	if heightMM > 24 {
+		return "\n^MNN"
+	}
+	return ""
+}
+
 // GenerateWatchTagZPL builds a ZPL label for a watch/clock barcode sticker.
 // widthMM and heightMM define the physical label size in millimetres.
 // At 203 dpi (8 dpmm), dots = mm * 8.
@@ -49,10 +60,11 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string, width
 	totalWidth := widthMM * 2 * 8
 	height := heightMM * 8
 	l := layoutFor(heightMM)
+	media := mediaSuffix(heightMM)
 
 	zpl := fmt.Sprintf(`^XA
 ^PW%d
-^LL%d
+^LL%d%s
 ^FO10,%d^A0N,%d,%d^FB250,1,0,L^FD%s^FS
 ^FO0,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS
 ^FO10,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
@@ -62,7 +74,7 @@ func GenerateWatchTagZPLPair(brand, model, price, serial1, serial2 string, width
 ^FO%d,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
 ^FO%d,%d^A0N,%d,%d^FD%s^FS
 ^XZ`,
-		totalWidth, height,
+		totalWidth, height, media,
 		l.topY, l.topFont, l.topFont, model,
 		l.topY, l.topFont, l.topFont, stickerWidth, "Rs. "+price,
 		l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial1,
@@ -83,16 +95,17 @@ func GenerateWatchTagZPLSingleWide(brand, model, price, serial string, widthMM, 
 	totalWidth := widthMM * 2 * 8
 	height := heightMM * 8
 	l := layoutFor(heightMM)
+	media := mediaSuffix(heightMM)
 
 	zpl := fmt.Sprintf(`^XA
 ^PW%d
-^LL%d
+^LL%d%s
 ^FO10,%d^A0N,%d,%d^FB250,1,0,L^FD%s^FS
 ^FO0,%d^A0N,%d,%d^FB%d,1,0,R^FD%s^FS
 ^FO10,%d^BY%d,3,%d^BCN,%d,N,N,N^FD%s^FS
 ^FO10,%d^A0N,%d,%d^FD%s^FS
 ^XZ`,
-		totalWidth, height,
+		totalWidth, height, media,
 		l.topY, l.topFont, l.topFont, model,
 		l.topY, l.topFont, l.topFont, stickerWidth, "Rs. "+price,
 		l.barcodeY, l.barWidth, l.barcodeHeight, l.barcodeHeight, serial,
